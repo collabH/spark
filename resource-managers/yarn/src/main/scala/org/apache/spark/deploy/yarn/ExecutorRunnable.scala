@@ -100,6 +100,7 @@ private[yarn] class ExecutorRunnable(
     // 封装指令
     val commands = prepareCommand()
 
+    // 启动CoarseGrainedExecutorBackend进程
     ctx.setCommands(commands.asJava)
     ctx.setApplicationACLs(
       YarnSparkHadoopUtil.getApplicationAclsForYarn(securityMgr).asJava)

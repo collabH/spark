@@ -32,7 +32,7 @@ import org.apache.spark.util.ThreadUtils
 
 /**
  * A message dispatcher, responsible for routing RPC messages to the appropriate endpoint(s).
- *
+ * 一个消息转发器，负责将RPC消息路由到适当的端点。
  * @param numUsableCores Number of CPU cores allocated to the process, for sizing the thread pool.
  *                       If 0, will consider the available CPUs on the host.
  */
@@ -42,6 +42,7 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv, numUsableCores: Int) exte
       val name: String,
       val endpoint: RpcEndpoint,
       val ref: NettyRpcEndpointRef) {
+    // 收件箱，接收数据的地方
     val inbox = new Inbox(ref, endpoint)
   }
 
@@ -60,18 +61,31 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv, numUsableCores: Int) exte
   @GuardedBy("this")
   private var stopped = false
 
+  /**
+    * 注册RpcEndpont
+    * @param name
+    * @param endpoint
+    * @return
+    */
   def registerRpcEndpoint(name: String, endpoint: RpcEndpoint): NettyRpcEndpointRef = {
+    // 创建RpcEndpoint地址
     val addr = RpcEndpointAddress(nettyEnv.address, name)
+    // 创建一个服务端引用,根据地址创建一个endpointRef
     val endpointRef = new NettyRpcEndpointRef(nettyEnv.conf, addr, nettyEnv)
     synchronized {
+      // 如果rpc已经被关闭直接抛出rpc关闭异常
       if (stopped) {
         throw new IllegalStateException("RpcEnv has been stopped")
       }
+      // 如果本地缓存中已经存在一个相同名字的rpcEndpoint则抛出异常
       if (endpoints.putIfAbsent(name, new EndpointData(name, endpoint, endpointRef)) != null) {
         throw new IllegalArgumentException(s"There is already an RpcEndpoint called $name")
       }
+      // 从缓存中拿到EndpointData数据(包含name,endpoint,endpointRef,inbox)
       val data = endpoints.get(name)
+      // endpoint和ref放入endpointRefs
       endpointRefs.put(data.endpoint, data.ref)
+      //将数据放入放入receivers中
       receivers.offer(data)  // for the OnStart message
     }
     endpointRef
@@ -86,6 +100,7 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv, numUsableCores: Int) exte
     val data = endpoints.remove(name)
     if (data != null) {
       data.inbox.stop()
+      // 数据放入receivers
       receivers.offer(data)  // for the OnStop message
     }
     // Don't clean `endpointRefs` here because it's possible that some messages are being processed
@@ -159,6 +174,7 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv, numUsableCores: Int) exte
       } else if (data == null) {
         Some(new SparkException(s"Could not find $endpointName."))
       } else {
+        // 本地指令
         data.inbox.post(message)
         receivers.offer(data)
         None

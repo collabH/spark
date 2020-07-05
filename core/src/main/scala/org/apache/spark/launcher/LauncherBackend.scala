@@ -39,15 +39,20 @@ private[spark] abstract class LauncherBackend {
   protected def conf: SparkConf
 
   def connect(): Unit = {
+    // 得到执行器端口，没有从系统变量中拿_SPARK_LAUNCHER_PORT
     val port = conf.getOption(LauncherProtocol.CONF_LAUNCHER_PORT)
       .orElse(sys.env.get(LauncherProtocol.ENV_LAUNCHER_PORT))
       .map(_.toInt)
+    // 拿到执行器秘钥
     val secret = conf.getOption(LauncherProtocol.CONF_LAUNCHER_SECRET)
       .orElse(sys.env.get(LauncherProtocol.ENV_LAUNCHER_SECRET))
     if (port != None && secret != None) {
       val s = new Socket(InetAddress.getLoopbackAddress(), port.get)
+      // 创建Backend连接
       connection = new BackendConnection(s)
+      // 发送测试mock命令
       connection.send(new Hello(secret.get, SPARK_VERSION))
+      // 创建客户端连接
       clientThread = LauncherBackend.threadFactory.newThread(connection)
       clientThread.start()
       _isConnected = true

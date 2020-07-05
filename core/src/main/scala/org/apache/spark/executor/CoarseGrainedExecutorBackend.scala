@@ -67,7 +67,9 @@ private[spark] class CoarseGrainedExecutorBackend(
   private[this] val ser: SerializerInstance = env.closureSerializer.newInstance()
 
   /**
-    * 启动
+    * 启动,通过RpcEndpoint方式启动
+    *  env.rpcEnv.setupEndpoint("Executor", new CoarseGrainedExecutorBackend(
+    *         env.rpcEnv, driverUrl, executorId, hostname, cores, userClassPath, env))
     */
   override def onStart() {
     logInfo("Connecting to driver: " + driverUrl)

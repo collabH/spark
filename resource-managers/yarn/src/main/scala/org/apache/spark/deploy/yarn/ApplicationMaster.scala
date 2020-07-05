@@ -58,6 +58,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
   // TODO: Currently, task to container is computed once (TaskSetManager) - which need not be
   // optimal as more containers are available. Might need to handle this better.
 
+  // 是否集群模式，如果userClass不等于Null
   private val isClusterMode = args.userClass != null
 
   private val sparkConf = new SparkConf()
@@ -104,6 +105,9 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
     new AMCredentialRenewer(sparkConf, yarnConf)
   }
 
+  /**
+    * ugi方式
+    */
   private val ugi = credentialRenewer match {
     case Some(cr) =>
       // Set the context class loader so that the token renewer has access to jars distributed
@@ -120,11 +124,11 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
       SparkHadoopUtil.get.createSparkUser()
   }
 
+  // YarnRM客户端
   private val client = doAsUser { new YarnRMClient() }
 
   // Default to twice the number of executors (twice the maximum number of executors if dynamic
   // allocation is enabled), with a minimum of 3.
-
   private val maxNumExecutorFailures = {
     val effectiveNumExecutors =
       if (Utils.isDynamicAllocationEnabled(sparkConf)) {
@@ -157,7 +161,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
   private val allocatorLock = new Object()
 
   // Steady state heartbeat interval. We want to be reasonably responsive without causing too many
-  // requests to RM.
+  // requests to RM. 心跳间隔，和RM之间的心跳
   private val heartbeatInterval = {
     // Ensure that progress is sent before YarnConfiguration.RM_AM_EXPIRY_INTERVAL_MS elapses.
     val expiryInterval = yarnConf.getInt(YarnConfiguration.RM_AM_EXPIRY_INTERVAL_MS, 120000)
@@ -214,7 +218,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
       visibilities(i))
     }
 
-    // Distribute the conf archive to executors.
+    // Distribute the conf archive to executors.将conf存档分发给各个Executor
     sparkConf.get(CACHED_CONF_ARCHIVE).foreach { path =>
       val uri = new URI(path)
       val fs = FileSystem.get(uri, yarnConf)
@@ -248,16 +252,19 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
     exitCode
   }
 
+  /**
+    * 运行ApplicationMaster
+    */
   private def runImpl(): Unit = {
     try {
       // ApplicationAttemptId
       val appAttemptId = client.getAttemptId()
 
       var attemptID: Option[String] = None
-
+      // 如果是cluster模式
       if (isClusterMode) {
         // Set the web ui port to be ephemeral for yarn so we don't conflict with
-        // other spark processes running on the same box
+        // other spark processes running on the same box，设置spark ui端口
         System.setProperty("spark.ui.port", "0")
 
         // Set the master and deploy mode property to match the requested mode.
@@ -270,16 +277,20 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
 
         attemptID = Option(appAttemptId.getAttemptId.toString)
       }
-
+      // 创建Caller上下文
       new CallerContext(
         "APPMASTER", sparkConf.get(APP_CALLER_CONTEXT),
         Option(appAttemptId.getApplicationId.toString), attemptID).setCurrentContext()
 
       logInfo("ApplicationAttemptId: " + appAttemptId)
 
+      // 添加shutdown hook
       // This shutdown hook should run *after* the SparkContext is shut down.
+      // 设置优先级，在spoarkContext关闭之后关闭
       val priority = ShutdownHookManager.SPARK_CONTEXT_SHUTDOWN_PRIORITY - 1
+      // 添加到shutdownHook中
       ShutdownHookManager.addShutdownHook(priority) { () =>
+        // 从yarn和spark配置拿到最大App最大重试次数
         val maxAppAttempts = client.getMaxRegAttempts(sparkConf, yarnConf)
         val isLastAttempt = client.getAttemptId().getAttemptId() >= maxAppAttempts
 
@@ -303,6 +314,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
         }
       }
 
+      // 如果是一群模式运行Driver，否则运行Executor启动器
       if (isClusterMode) {
         runDriver()
       } else {
@@ -469,6 +481,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
     // the allocator is ready to service requests.
     rpcEnv.setupEndpoint("YarnAM", new AMEndpoint(rpcEnv, driverRef))
 
+    //申请资源
     allocator.allocateResources()
     val ms = MetricsSystem.createMetricsSystem("applicationMaster", sparkConf, securityMgr)
     val prefix = _sparkConf.get(YARN_METRICS_NAMESPACE).getOrElse(appId)
@@ -531,22 +544,32 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
     }
   }
 
+
+  /**
+    * 运行Executor启动器
+    */
   private def runExecutorLauncher(): Unit = {
     val hostname = Utils.localHostName
+    // 拿到ApplicationMaster的核数
     val amCores = sparkConf.get(AM_CORES)
+    // 创建RPC执行环境
     rpcEnv = RpcEnv.create("sparkYarnAM", hostname, hostname, -1, sparkConf, securityMgr,
       amCores, true)
 
+    // 注册AM
     // The client-mode AM doesn't listen for incoming connections, so report an invalid port.
     registerAM(hostname, -1, sparkConf, sparkConf.getOption("spark.driver.appUIAddress"))
 
     // The driver should be up and listening, so unlike cluster mode, just try to connect to it
     // with no waiting or retrying.
     val (driverHost, driverPort) = Utils.parseHostPort(args.userArgs(0))
+    // 拿到driver引用
     val driverRef = rpcEnv.setupEndpointRef(
       RpcAddress(driverHost, driverPort),
       YarnSchedulerBackend.ENDPOINT_NAME)
+    // 添加AM过滤器
     addAmIpFilter(Some(driverRef))
+    // 申请资源
     createAllocator(driverRef, sparkConf)
 
     // In client mode the actor will stop the reporter thread.
@@ -569,6 +592,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
             "Due to executor failures all available nodes are blacklisted")
         } else {
           logDebug("Sending progress")
+          // 申请资源
           allocator.allocateResources()
         }
         failureCount = 0
@@ -834,6 +858,7 @@ object ApplicationMaster extends Logging {
 
   def main(args: Array[String]): Unit = {
     SignalUtils.registerLogger(log)
+    // 拿到am参数
     val amArgs = new ApplicationMasterArguments(args)
     master = new ApplicationMaster(amArgs)
     System.exit(master.run())

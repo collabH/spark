@@ -42,6 +42,7 @@ private[spark] abstract class RpcEndpointRef(conf: SparkConf)
   def name: String
 
   /**
+    * 发送one-way异步消息，一劳永逸语义
    * Sends a one-way asynchronous message. Fire-and-forget semantics.
    */
   def send(message: Any): Unit

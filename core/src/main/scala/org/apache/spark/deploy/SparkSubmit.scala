@@ -73,16 +73,23 @@ private[spark] class SparkSubmit extends Logging {
   import DependencyUtils._
   import SparkSubmit._
 
+  /**
+    * 真正的submit逻辑
+    * @param args
+    */
   def doSubmit(args: Array[String]): Unit = {
     // Initialize logging if it hasn't been done yet. Keep track of whether logging needs to
     // be reset before the application starts.
     val uninitLog = initializeLogIfNecessary(true, silent = true)
 
+    // 解析参数
     val appArgs = parseArguments(args)
     if (appArgs.verbose) {
       logInfo(appArgs.toString)
     }
+    // action
     appArgs.action match {
+        //执行提交逻辑
       case SparkSubmitAction.SUBMIT => submit(appArgs, uninitLog)
       case SparkSubmitAction.KILL => kill(appArgs)
       case SparkSubmitAction.REQUEST_STATUS => requestStatus(appArgs)
@@ -130,12 +137,14 @@ private[spark] class SparkSubmit extends Logging {
   }
 
   /**
+    * 提交一个应用使用用户提供的参数
    * Submit the application using the provided parameters, ensuring to first wrap
    * in a doAs when --proxy-user is specified.
    */
   @tailrec
   private def submit(args: SparkSubmitArguments, uninitLog: Boolean): Unit = {
 
+    // 执行main方法逻辑
     def doRunMain(): Unit = {
       if (args.proxyUser != null) {
         val proxyUser = UserGroupInformation.createProxyUser(args.proxyUser,
@@ -292,6 +301,7 @@ private[spark] class SparkSubmit extends Logging {
       case (null, CLUSTER) => args.deployMode = "cluster"
       case _ =>
     }
+    //如果是yarn cluster部署
     val isYarnCluster = clusterManager == YARN && deployMode == CLUSTER
     val isMesosCluster = clusterManager == MESOS && deployMode == CLUSTER
     val isStandAloneCluster = clusterManager == STANDALONE && deployMode == CLUSTER
@@ -557,6 +567,7 @@ private[spark] class SparkSubmit extends Logging {
 
     // In client mode, launch the application main class directly
     // In addition, add the main application jar and any added jars (if any) to the classpath
+    //如果是Yarn Client模式，Driver就是--class指定的类
     if (deployMode == CLIENT) {
       childMainClass = args.mainClass
       if (localPrimaryResource != null && isUserJar(localPrimaryResource)) {
@@ -639,6 +650,7 @@ private[spark] class SparkSubmit extends Logging {
 
     // In yarn-cluster mode, use yarn.Client as a wrapper around the user class
     if (isYarnCluster) {
+      // 如果是Yarn Cluster模式，org.apache.spark.deploy.yarn.YarnClusterApplication
       childMainClass = YARN_CLUSTER_SUBMIT_CLASS
       if (args.isPython) {
         childArgs += ("--primary-py-file", args.primaryResource)
@@ -759,8 +771,10 @@ private[spark] class SparkSubmit extends Logging {
   }
 
   /**
-   * Run the main method of the child class using the submit arguments.
-   *
+    * 使用Submit参数运行子类的main方法。
+    * Run the main method of the child class using the submit arguments.
+    *
+    *
    * This runs in two steps. First, we prepare the launch environment by setting up
    * the appropriate classpath, system properties, and application arguments for
    * running the child main class based on the cluster manager and the deploy mode.
@@ -771,6 +785,7 @@ private[spark] class SparkSubmit extends Logging {
    * running cluster deploy mode or python applications.
    */
   private def runMain(args: SparkSubmitArguments, uninitLog: Boolean): Unit = {
+    // 准备提交环境变量
     val (childArgs, childClasspath, sparkConf, childMainClass) = prepareSubmitEnvironment(args)
     // Let the main class re-initialize the logging system once it starts.
     if (uninitLog) {
@@ -803,6 +818,7 @@ private[spark] class SparkSubmit extends Logging {
     var mainClass: Class[_] = null
 
     try {
+      //YarnCluster YarnClusterApplication或者--class指定的类
       mainClass = Utils.classForName(childMainClass)
     } catch {
       case e: ClassNotFoundException =>
@@ -821,6 +837,7 @@ private[spark] class SparkSubmit extends Logging {
         throw new SparkUserAppException(CLASS_NOT_FOUND_EXIT_STATUS)
     }
 
+    // 创建出SparkApplication
     val app: SparkApplication = if (classOf[SparkApplication].isAssignableFrom(mainClass)) {
       mainClass.newInstance().asInstanceOf[SparkApplication]
     } else {
@@ -899,11 +916,19 @@ object SparkSubmit extends CommandLineUtils with Logging {
   private[deploy] val KUBERNETES_CLUSTER_SUBMIT_CLASS =
     "org.apache.spark.deploy.k8s.submit.KubernetesClientApplication"
 
+  /**
+    * SparkSubmit执行方法
+    * @param args
+    */
   override def main(args: Array[String]): Unit = {
+    // 创建一个SparkSubmit
     val submit = new SparkSubmit() {
+      // 如果为self
       self =>
 
+      // 解析传递参数
       override protected def parseArguments(args: Array[String]): SparkSubmitArguments = {
+        // 创建SparkSubmitArguments
         new SparkSubmitArguments(args) {
           override protected def logInfo(msg: => String): Unit = self.logInfo(msg)
 
@@ -915,6 +940,7 @@ object SparkSubmit extends CommandLineUtils with Logging {
 
       override protected def logWarning(msg: => String): Unit = printMessage(s"Warning: $msg")
 
+      // 执行submit逻辑
       override def doSubmit(args: Array[String]): Unit = {
         try {
           super.doSubmit(args)

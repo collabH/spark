@@ -241,14 +241,16 @@ private[yarn] class YarnAllocator(
    * This must be synchronized because variables read in this method are mutated by other methods.
    */
   def allocateResources(): Unit = synchronized {
+    // 修改资源请求
     updateResourceRequests()
 
     val progressIndicator = 0.1f
     // Poll the ResourceManager. This doubles as a heartbeat if there are no pending container
-    // requests.
+    // requests.发送心跳给RM，得到全部可用的资源
     val allocateResponse = amClient.allocate(progressIndicator)
 
     val allocatedContainers = allocateResponse.getAllocatedContainers()
+    // 设置集群节点数到YarnAllocatorBlacklistTracker
     allocatorBlacklistTracker.setNumClusterNodes(allocateResponse.getNumClusterNodes)
 
     if (allocatedContainers.size > 0) {
@@ -259,13 +261,14 @@ private[yarn] class YarnAllocator(
           runningExecutors.size,
           numExecutorsStarting.get,
           allocateResponse.getAvailableResources))
-
+      // 处理申请的容器资源
       handleAllocatedContainers(allocatedContainers.asScala)
     }
-
+      // 得到完成的容器状态
     val completedContainers = allocateResponse.getCompletedContainersStatuses()
     if (completedContainers.size > 0) {
       logDebug("Completed %d containers".format(completedContainers.size))
+      // 处理完成的容器
       processCompletedContainers(completedContainers.asScala)
       logDebug("Finished processing %d completed containers. Current running executor count: %d."
         .format(completedContainers.size, runningExecutors.size))
@@ -279,6 +282,7 @@ private[yarn] class YarnAllocator(
    * Visible for testing.
    */
   def updateResourceRequests(): Unit = {
+    // 得到pending申请的资源
     val pendingAllocate = getPendingAllocate
     val numPendingAllocate = pendingAllocate.size
     val missing = targetNumExecutors - numPendingAllocate -
@@ -392,6 +396,7 @@ private[yarn] class YarnAllocator(
   }
 
   /**
+    * 通过启动executors来处理RM授予的容器。
    * Handle containers granted by the RM by launching executors on them.
    *
    * Due to the way the YARN allocation protocol works, certain healthy race conditions can result
@@ -400,10 +405,13 @@ private[yarn] class YarnAllocator(
    * Visible for testing.
    */
   def handleAllocatedContainers(allocatedContainers: Seq[Container]): Unit = {
+    // 使用的容器
     val containersToUse = new ArrayBuffer[Container](allocatedContainers.size)
 
     // Match incoming requests by host
+    // 剩余之后的host匹配器
     val remainingAfterHostMatches = new ArrayBuffer[Container]
+    // 遍历全部资源容器
     for (allocatedContainer <- allocatedContainers) {
       matchContainerToRequest(allocatedContainer, allocatedContainer.getNodeId.getHost,
         containersToUse, remainingAfterHostMatches)
@@ -460,7 +468,7 @@ private[yarn] class YarnAllocator(
         internalReleaseContainer(container)
       }
     }
-
+    // 运行申请的容器
     runAllocatedContainers(containersToUse)
 
     logInfo("Received %d containers from YARN, launching executors on %d of them."
@@ -486,17 +494,23 @@ private[yarn] class YarnAllocator(
     // request; for example, capacity scheduler + DefaultResourceCalculator. So match on requested
     // memory, but use the asked vcore count for matching, effectively disabling matching on vcore
     // count.
+    // 根据容器配置匹配资源 匹配已经使用的容器
     val matchingResource = Resource.newInstance(allocatedContainer.getResource.getMemory,
           resource.getVirtualCores)
+    // 根据容器配置匹配请求
     val matchingRequests = amClient.getMatchingRequests(allocatedContainer.getPriority, location,
       matchingResource)
 
-    // Match the allocation to a request
+    // Match the allocation to a request，
     if (!matchingRequests.isEmpty) {
+      // 拿到容器请求
       val containerRequest = matchingRequests.get(0).iterator.next
+      // 通过am移除该请
       amClient.removeContainerRequest(containerRequest)
+      // 使用的容器+1
       containersToUse += allocatedContainer
     } else {
+      // 剩余的容器个数
       remaining += allocatedContainer
     }
   }
@@ -591,6 +605,7 @@ private[yarn] class YarnAllocator(
       val exitReason = if (!alreadyReleased) {
         // Decrement the number of executors running. The next iteration of
         // the ApplicationMaster's reporting thread will take care of allocating.
+        // 移除完成的executor
         containerIdToExecutorId.get(containerId) match {
           case Some(executorId) => runningExecutors.remove(executorId)
           case None => logWarning(s"Cannot find executorId for container: ${containerId.toString}")

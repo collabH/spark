@@ -25,7 +25,9 @@ import org.apache.spark.SparkException
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcAddress, RpcEndpoint, ThreadSafeRpcEndpoint}
 
-
+/**
+  * inbox消息
+  */
 private[netty] sealed trait InboxMessage
 
 private[netty] case class OneWayMessage(

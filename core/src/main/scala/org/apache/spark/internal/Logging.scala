@@ -99,6 +99,12 @@ trait Logging {
     initializeLogIfNecessary(isInterpreter, silent = false)
   }
 
+  /**
+    * 初始化日志
+    * @param isInterpreter
+    * @param silent
+    * @return
+    */
   protected def initializeLogIfNecessary(
       isInterpreter: Boolean,
       silent: Boolean = false): Boolean = {

@@ -125,8 +125,9 @@ private[netty] class NettyRpcEnv(
   override lazy val address: RpcAddress = {
     if (server != null) RpcAddress(host, server.getPort()) else null
   }
-
+  // 设置endpoint
   override def setupEndpoint(name: String, endpoint: RpcEndpoint): RpcEndpointRef = {
+    // 将传递的RpcEndpoint注册到消息转发器dispatcher中
     dispatcher.registerRpcEndpoint(name, endpoint)
   }
 
@@ -149,6 +150,11 @@ private[netty] class NettyRpcEnv(
     dispatcher.stop(endpointRef)
   }
 
+  /**
+    * 发送消息到outbox中
+    * @param receiver
+    * @param message
+    */
   private def postToOutbox(receiver: NettyRpcEndpointRef, message: OutboxMessage): Unit = {
     if (receiver.client != null) {
       message.sendWith(receiver.client)
@@ -169,27 +175,39 @@ private[netty] class NettyRpcEnv(
           outbox
         }
       }
+      // 如果已经关闭，将outboxes清理
       if (stopped.get) {
         // It's possible that we put `targetOutbox` after stopping. So we need to clean it.
         outboxes.remove(receiver.address)
         targetOutbox.stop()
       } else {
+        // targetOutbox发送消息
         targetOutbox.send(message)
       }
     }
   }
 
+  /**
+    * 发送消息
+    * @param message
+    */
   private[netty] def send(message: RequestMessage): Unit = {
+    // 拿到远程addr
     val remoteAddr = message.receiver.address
+    // 如果address=remoteAddr
     if (remoteAddr == address) {
+      //消息发送到一个本地RCP endpoint
       // Message to a local RPC endpoint.
       try {
+        //发送OneWay消息，通过inbox发送消息
         dispatcher.postOneWayMessage(message)
       } catch {
         case e: RpcEnvStoppedException => logDebug(e.getMessage)
       }
+      // 远程rpc端
     } else {
       // Message to a remote RPC endpoint.
+      // 发送至OutBox
       postToOutbox(message.receiver, OneWayOutboxMessage(message.serialize(this)))
     }
   }
@@ -198,6 +216,13 @@ private[netty] class NettyRpcEnv(
     clientFactory.createClient(address.host, address.port)
   }
 
+  /**
+    * 发送消息，actor模型
+    * @param message
+    * @param timeout
+    * @tparam T
+    * @return
+    */
   private[netty] def ask[T: ClassTag](message: RequestMessage, timeout: RpcTimeout): Future[T] = {
     val promise = Promise[Any]()
     val remoteAddr = message.receiver.address
@@ -525,6 +550,7 @@ private[netty] class NettyRpcEndpointRef(
 
   override def send(message: Any): Unit = {
     require(message != null, "Message is null")
+    // 通过netty发送消息
     nettyEnv.send(new RequestMessage(nettyEnv.address, this, message))
   }
 

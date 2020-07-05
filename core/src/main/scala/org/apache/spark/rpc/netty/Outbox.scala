@@ -119,6 +119,7 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
       if (stopped) {
         true
       } else {
+        // 消息放入内存
         messages.add(message)
         false
       }
@@ -126,6 +127,7 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
     if (dropped) {
       message.onFailure(new SparkException("Message is dropped because Outbox is stopped"))
     } else {
+      // 将outbox消息发送至inbox
       drainOutbox()
     }
   }
@@ -154,16 +156,19 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
         // There is some thread draining, so just exit
         return
       }
+      // 拿到第一条消息
       message = messages.poll()
       if (message == null) {
         return
       }
+      // 标识该线程正在处理消息
       draining = true
     }
     while (true) {
       try {
         val _client = synchronized { client }
         if (_client != null) {
+          // 发送消息
           message.sendWith(_client)
         } else {
           assert(stopped == true)
