@@ -59,9 +59,11 @@ private[yarn] class ExecutorRunnable(
 
   def run(): Unit = {
     logDebug("Starting Executor Container")
+    // 创建NodeManager客户端
     nmClient = NMClient.createNMClient()
     nmClient.init(conf)
     nmClient.start()
+    // 启动Container
     startContainer()
   }
 
@@ -85,6 +87,7 @@ private[yarn] class ExecutorRunnable(
   def startContainer(): java.util.Map[String, ByteBuffer] = {
     val ctx = Records.newRecord(classOf[ContainerLaunchContext])
       .asInstanceOf[ContainerLaunchContext]
+    // 准备env
     val env = prepareEnvironment().asJava
 
     ctx.setLocalResources(localResources.asJava)
@@ -94,7 +97,7 @@ private[yarn] class ExecutorRunnable(
     val dob = new DataOutputBuffer()
     credentials.writeTokenStorageToStream(dob)
     ctx.setTokens(ByteBuffer.wrap(dob.getData()))
-
+    // 封装指令
     val commands = prepareCommand()
 
     ctx.setCommands(commands.asJava)
@@ -135,7 +138,7 @@ private[yarn] class ExecutorRunnable(
     val executorMemoryString = executorMemory + "m"
     javaOpts += "-Xmx" + executorMemoryString
 
-    // Set extra Java options for the executor, if defined
+    // Set extra Java options for the executor, if defined，设置executor jvm参数
     sparkConf.get(EXECUTOR_JAVA_OPTIONS).foreach { opts =>
       val subsOpt = Utils.substituteAppNExecIds(opts, appId, executorId)
       javaOpts ++= Utils.splitCommandString(subsOpt).map(YarnSparkHadoopUtil.escapeForShell)
@@ -186,7 +189,6 @@ private[yarn] class ExecutorRunnable(
 
     // For log4j configuration to reference
     javaOpts += ("-Dspark.yarn.app.container.log.dir=" + ApplicationConstants.LOG_DIR_EXPANSION_VAR)
-
     val userClassPath = Client.getUserClasspath(sparkConf).flatMap { uri =>
       val absPath =
         if (new File(uri.getPath()).isAbsolute()) {
@@ -196,8 +198,9 @@ private[yarn] class ExecutorRunnable(
         }
       Seq("--user-class-path", "file:" + absPath)
     }.toSeq
-
+    // 设置oom报错参数
     YarnSparkHadoopUtil.addOutOfMemoryErrorArgument(javaOpts)
+    // 拼接command
     val commands = prefixEnv ++
       Seq(Environment.JAVA_HOME.$$() + "/bin/java", "-server") ++
       javaOpts ++

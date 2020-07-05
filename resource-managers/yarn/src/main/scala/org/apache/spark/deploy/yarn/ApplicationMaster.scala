@@ -80,6 +80,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
     sys.props(k) = v
   }
 
+  // 将sparkConf转换为yarn配置
   private val yarnConf = new YarnConfiguration(SparkHadoopUtil.newConfiguration(sparkConf))
 
   private val userClassLoader = {
@@ -249,6 +250,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
 
   private def runImpl(): Unit = {
     try {
+      // ApplicationAttemptId
       val appAttemptId = client.getAttemptId()
 
       var attemptID: Option[String] = None
@@ -402,12 +404,21 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
     }
   }
 
+  /**
+    * 注册ApplicationMaster到Yarn
+    * @param host host地址
+    * @param port 端口地址
+    * @param _sparkConf spark配置
+    * @param uiAddress yarn ui
+    */
   private def registerAM(
       host: String,
       port: Int,
       _sparkConf: SparkConf,
       uiAddress: Option[String]): Unit = {
+    // application id
     val appId = client.getAttemptId().getApplicationId().toString()
+    // attempt id
     val attemptId = client.getAttemptId().getAttemptId().toString()
     val historyAddress = ApplicationMaster
       .getHistoryServerAddress(_sparkConf, yarnConf, appId, attemptId)
@@ -416,8 +427,15 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
     registered = true
   }
 
+  /**
+    * 创建YarnAllocator资源申请器
+    * @param driverRef
+    * @param _sparkConf
+    */
   private def createAllocator(driverRef: RpcEndpointRef, _sparkConf: SparkConf): Unit = {
+    //拿到applicationId用户rpc和yarn的RM做交互
     val appId = client.getAttemptId().getApplicationId().toString()
+    //得到driverURL
     val driverUrl = RpcEndpointAddress(driverRef.address.host, driverRef.address.port,
       CoarseGrainedSchedulerBackend.ENDPOINT_NAME).toString
 
@@ -425,13 +443,17 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
     // be run up front, to avoid printing this out for every single executor being launched.
     // Use placeholders for information that changes such as executor IDs.
     logInfo {
+      // 得到executor内存
       val executorMemory = _sparkConf.get(EXECUTOR_MEMORY).toInt
+      // 得到executor cores数
       val executorCores = _sparkConf.get(EXECUTOR_CORES)
+      // 创建ExecutorRunner
       val dummyRunner = new ExecutorRunnable(None, yarnConf, _sparkConf, driverUrl, "<executorId>",
         "<hostname>", executorMemory, executorCores, appId, securityMgr, localResources)
       dummyRunner.launchContextDebugInfo()
     }
 
+    // 创建YarnAllocator
     allocator = client.createAllocator(
       yarnConf,
       _sparkConf,
@@ -459,33 +481,41 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
 
   private def runDriver(): Unit = {
     addAmIpFilter(None)
+    //启动-class指定的类，拿到用户类执行线程
     userClassThread = startUserApplication()
 
     // This a bit hacky, but we need to wait until the spark.driver.port property has
     // been set by the Thread executing the user class.
     logInfo("Waiting for spark context initialization...")
+    // 得到am最大等待时间
     val totalWaitTime = sparkConf.get(AM_MAX_WAIT_TIME)
     try {
-      val sc = ThreadUtils.awaitResult(sparkContextPromise.future,
+      // 拿到sparkcontext
+      val sc: SparkContext = ThreadUtils.awaitResult(sparkContextPromise.future,
         Duration(totalWaitTime, TimeUnit.MILLISECONDS))
       if (sc != null) {
+        //拿到rpc环境变量
         rpcEnv = sc.env.rpcEnv
 
         val userConf = sc.getConf
         val host = userConf.get("spark.driver.host")
         val port = userConf.get("spark.driver.port").toInt
+        // 注册AM到yarn
         registerAM(host, port, userConf, sc.ui.map(_.webUrl))
-
+        // 拿到driverRef
         val driverRef = rpcEnv.setupEndpointRef(
           RpcAddress(host, port),
           YarnSchedulerBackend.ENDPOINT_NAME)
+        // 创建Allocator
         createAllocator(driverRef, userConf)
       } else {
         // Sanity check; should never happen in normal operation, since sc should only be null
         // if the user app did not create a SparkContext.
         throw new IllegalStateException("User did not initialize spark context!")
       }
+      // 唤醒Driver
       resumeDriver()
+      // userClassThread需要执行完毕
       userClassThread.join()
     } catch {
       case e: SparkException if e.getCause().isInstanceOf[TimeoutException] =>
@@ -496,6 +526,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
           ApplicationMaster.EXIT_SC_NOT_INITED,
           "Timed out waiting for SparkContext.")
     } finally {
+      //唤醒Driver
       resumeDriver()
     }
   }
@@ -671,18 +702,21 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
     if (args.primaryRFile != null && args.primaryRFile.endsWith(".R")) {
       // TODO(davies): add R dependencies here
     }
-
+    // 拿到class类的信息，拿到main方法
     val mainMethod = userClassLoader.loadClass(args.userClass)
       .getMethod("main", classOf[Array[String]])
-
+    // 启动一个线程去执行main方法
     val userThread = new Thread {
       override def run() {
         try {
+          // 如果不是static方法，
           if (!Modifier.isStatic(mainMethod.getModifiers)) {
             logError(s"Could not find static main method in object ${args.userClass}")
             finish(FinalApplicationStatus.FAILED, ApplicationMaster.EXIT_EXCEPTION_USER_CLASS)
           } else {
+            // 执行main方法
             mainMethod.invoke(null, userArgs.toArray)
+            // yarn ui标识
             finish(FinalApplicationStatus.SUCCEEDED, ApplicationMaster.EXIT_SUCCESS)
             logDebug("Done running user class")
           }
@@ -712,6 +746,7 @@ private[spark] class ApplicationMaster(args: ApplicationMasterArguments) extends
       }
     }
     userThread.setContextClassLoader(userClassLoader)
+    // Driver线程
     userThread.setName("Driver")
     userThread.start()
     userThread
@@ -812,6 +847,14 @@ object ApplicationMaster extends Logging {
     master.getAttemptId
   }
 
+  /**
+    * 拿到历史日志服务器地址
+    * @param sparkConf
+    * @param yarnConf
+    * @param appId
+    * @param attemptId
+    * @return
+    */
   private[spark] def getHistoryServerAddress(
       sparkConf: SparkConf,
       yarnConf: YarnConfiguration,

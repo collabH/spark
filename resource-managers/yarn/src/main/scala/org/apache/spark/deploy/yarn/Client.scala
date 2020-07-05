@@ -65,9 +65,11 @@ private[spark] class Client(
   import Client._
   import YarnSparkHadoopUtil._
 
+  // yarnClient
   private val yarnClient = YarnClient.createYarnClient
   private val hadoopConf = new YarnConfiguration(SparkHadoopUtil.newConfiguration(sparkConf))
 
+  // 判断是否是集群模式
   private val isClusterMode = sparkConf.get("spark.submit.deployMode", "client") == "cluster"
 
   // AM related configurations
@@ -177,6 +179,7 @@ private[spark] class Client(
 
       // Set up the appropriate contexts to launch our AM
       val containerContext = createContainerLaunchContext(newAppResponse)
+      // 创建应用提交上下文
       val appContext = createApplicationSubmissionContext(newApp, containerContext)
 
       // Finally, submit and monitor the application
@@ -846,6 +849,7 @@ private[spark] class Client(
   }
 
   /**
+    * 设置容器执行上下文在我们的ApplicationMaster容器
    * Set up a ContainerLaunchContext to launch our ApplicationMaster container.
    * This sets up the launch environment, java options, and the command for launching the AM.
    */
@@ -874,7 +878,7 @@ private[spark] class Client(
     // to append to the existing value of the variable
     var prefixEnv: Option[String] = None
 
-    // Add Xmx for AM memory
+    // Add Xmx for AM memory 添加Xmx向AM内存中
     javaOpts += "-Xmx" + amMemory + "m"
 
     val tmpDir = new Path(Environment.PWD.$$(), YarnConfiguration.DEFAULT_CONTAINER_TEMP_DIR)
@@ -964,6 +968,7 @@ private[spark] class Client(
       } else {
         Nil
       }
+    // 拿到amClass
     val amClass =
       if (isClusterMode) {
         Utils.classForName("org.apache.spark.deploy.yarn.ApplicationMaster").getName
@@ -973,14 +978,16 @@ private[spark] class Client(
     if (args.primaryRFile != null && args.primaryRFile.endsWith(".R")) {
       args.userArgs = ArrayBuffer(args.primaryRFile) ++ args.userArgs
     }
+    // 凭借用户参数
     val userArgs = args.userArgs.flatMap { arg =>
       Seq("--arg", YarnSparkHadoopUtil.escapeForShell(arg))
     }
+    // am参数
     val amArgs =
       Seq(amClass) ++ userClass ++ userJar ++ primaryPyFile ++ primaryRFile ++ userArgs ++
       Seq("--properties-file", buildPath(Environment.PWD.$$(), LOCALIZED_CONF_DIR, SPARK_CONF_FILE))
 
-    // Command for the ApplicationMaster
+    // Command for the ApplicationMaster，封装的指令
     val commands = prefixEnv ++
       Seq(Environment.JAVA_HOME.$$() + "/bin/java", "-server") ++
       javaOpts ++ amArgs ++
@@ -990,6 +997,7 @@ private[spark] class Client(
 
     // TODO: it would be nicer to just make sure there are no null commands here
     val printableCommands = commands.map(s => if (s == null) "null" else s).toList
+    // 封装至AM容器
     amContainer.setCommands(printableCommands.asJava)
 
     logDebug("===============================================================================")

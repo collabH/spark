@@ -33,6 +33,7 @@ private[spark] trait RpcEnvFactory {
  *
  * It is guaranteed that `onStart`, `receive` and `onStop` will be called in sequence.
  *
+ * 生命周期
  * The life-cycle of an endpoint is:
  *
  * {@code constructor -> onStart -> receive* -> onStop}

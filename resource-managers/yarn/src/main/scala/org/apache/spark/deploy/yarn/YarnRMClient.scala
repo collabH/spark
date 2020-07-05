@@ -42,7 +42,7 @@ private[spark] class YarnRMClient extends Logging {
 
   /**
    * Registers the application master with the RM.
-   *
+   * 注册这个appkication master到RM
    * @param driverHost Host name where driver is running.
    * @param driverPort Port where driver is listening.
    * @param conf The Yarn configuration.
@@ -57,8 +57,11 @@ private[spark] class YarnRMClient extends Logging {
       sparkConf: SparkConf,
       uiAddress: Option[String],
       uiHistoryAddress: String): Unit = {
+    // 创建am客户端
     amClient = AMRMClient.createAMRMClient()
+    // 根据yarn配置初始化am客户端
     amClient.init(conf)
+    // 启动am客户端
     amClient.start()
     this.uiHistoryAddress = uiHistoryAddress
 
@@ -68,6 +71,7 @@ private[spark] class YarnRMClient extends Logging {
 
     logInfo("Registering the ApplicationMaster")
     synchronized {
+      // driver注册到applicationMater中
       amClient.registerApplicationMaster(driverHost, driverPort, trackingUrl)
       registered = true
     }
@@ -81,6 +85,7 @@ private[spark] class YarnRMClient extends Logging {
       securityMgr: SecurityManager,
       localResources: Map[String, LocalResource]): YarnAllocator = {
     require(registered, "Must register AM before creating allocator.")
+    //创建YarnAllocator
     new YarnAllocator(driverUrl, driverRef, conf, sparkConf, amClient, getAttemptId(), securityMgr,
       localResources, new SparkRackResolver())
   }

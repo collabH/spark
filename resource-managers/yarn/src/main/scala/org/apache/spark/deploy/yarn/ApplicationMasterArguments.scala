@@ -41,7 +41,7 @@ class ApplicationMasterArguments(val args: Array[String]) {
         case ("--jar") :: value :: tail =>
           userJar = value
           args = tail
-
+        // 设置执行的driver类
         case ("--class") :: value :: tail =>
           userClass = value
           args = tail

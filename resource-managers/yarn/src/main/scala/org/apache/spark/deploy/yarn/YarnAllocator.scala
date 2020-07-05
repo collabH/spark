@@ -445,6 +445,7 @@ private[yarn] class YarnAllocator(
       }
     }
 
+    // 进程本地化、节点本地化或机架本地化
     // Assign remaining that are neither node-local nor rack-local
     val remainingAfterOffRackMatches = new ArrayBuffer[Container]
     for (allocatedContainer <- remainingAfterRackMatches) {
@@ -504,18 +505,25 @@ private[yarn] class YarnAllocator(
    * Launches executors in the allocated containers.
    */
   private def runAllocatedContainers(containersToUse: ArrayBuffer[Container]): Unit = {
+    // 遍历使用的Container
     for (container <- containersToUse) {
+      //记录executorid
       executorIdCounter += 1
       val executorHostname = container.getNodeId.getHost
       val containerId = container.getId
       val executorId = executorIdCounter.toString
+      // 如果RM剩余内存小于容器申请内存，抛出异常
       assert(container.getResource.getMemory >= resource.getMemory)
       logInfo(s"Launching container $containerId on host $executorHostname " +
         s"for executor with ID $executorId")
 
+      // 跟下内部状态
       def updateInternalState(): Unit = synchronized {
+        // 正在运行的executor数
         runningExecutors.add(executorId)
+        // 启动的executor个数
         numExecutorsStarting.decrementAndGet()
+        // executorId
         executorIdToContainer(executorId) = container
         containerIdToExecutorId(container.getId) = executorId
 
@@ -525,12 +533,14 @@ private[yarn] class YarnAllocator(
         allocatedContainerToHostMap.put(containerId, executorHostname)
       }
 
-      if (runningExecutors.size() < targetNumExecutors) {
+      // 如果运行的executor个数小于目标数量的executor个数
+      if (runningExecutors.size() < targetNumExecutors) {、
         numExecutorsStarting.incrementAndGet()
         if (launchContainers) {
           launcherPool.execute(new Runnable {
             override def run(): Unit = {
               try {
+                // 运行Executor
                 new ExecutorRunnable(
                   Some(container),
                   conf,
