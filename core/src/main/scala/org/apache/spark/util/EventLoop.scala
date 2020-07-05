@@ -33,6 +33,7 @@ import org.apache.spark.internal.Logging
  */
 private[spark] abstract class EventLoop[E](name: String) extends Logging {
 
+  // 阻塞队列，用于存放事件，可以优化为无所队列提升性能
   private val eventQueue: BlockingQueue[E] = new LinkedBlockingDeque[E]()
 
   private val stopped = new AtomicBoolean(false)
@@ -41,6 +42,9 @@ private[spark] abstract class EventLoop[E](name: String) extends Logging {
   private[spark] val eventThread = new Thread(name) {
     setDaemon(true)
 
+    /**
+      * run方法
+      */
     override def run(): Unit = {
       try {
         while (!stopped.get) {
@@ -64,6 +68,9 @@ private[spark] abstract class EventLoop[E](name: String) extends Logging {
 
   }
 
+  /**
+    * 启动事件线程，处理DAG事件
+    */
   def start(): Unit = {
     if (stopped.get) {
       throw new IllegalStateException(name + " has already been stopped")
@@ -73,6 +80,9 @@ private[spark] abstract class EventLoop[E](name: String) extends Logging {
     eventThread.start()
   }
 
+  /**
+    * 调用start
+    */
   def stop(): Unit = {
     if (stopped.compareAndSet(false, true)) {
       eventThread.interrupt()
@@ -100,6 +110,7 @@ private[spark] abstract class EventLoop[E](name: String) extends Logging {
    * Put the event into the event queue. The event thread will process it later.
    */
   def post(event: E): Unit = {
+    // 向队列中放事件
     eventQueue.put(event)
   }
 

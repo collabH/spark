@@ -249,6 +249,7 @@ abstract class RDD[T: ClassTag](
    * RDD is checkpointed or not.
    */
   final def dependencies: Seq[Dependency[_]] = {
+    // 窄依赖  1对1
     checkpointRDD.map(r => List(new OneToOneDependency(r))).getOrElse {
       if (dependencies_ == null) {
         stateLock.synchronized {
@@ -266,10 +267,13 @@ abstract class RDD[T: ClassTag](
    * RDD is checkpointed or not.
    */
   final def partitions: Array[Partition] = {
+    // 拿到分区数组
     checkpointRDD.map(_.partitions).getOrElse {
+      // 如果partitions_为null，double check
       if (partitions_ == null) {
         stateLock.synchronized {
           if (partitions_ == null) {
+            // 拿到分区
             partitions_ = getPartitions
             partitions_.zipWithIndex.foreach { case (partition, index) =>
               require(partition.index == index,
@@ -391,6 +395,7 @@ abstract class RDD[T: ClassTag](
    */
   def map[U: ClassTag](f: T => U): RDD[U] = withScope {
     val cleanF = sc.clean(f)
+    // 同样转换为MapPartitionRDD
     new MapPartitionsRDD[U, T](this, (context, pid, iter) => iter.map(cleanF))
   }
 
@@ -399,7 +404,9 @@ abstract class RDD[T: ClassTag](
    *  RDD, and then flattening the results.
    */
   def flatMap[U: ClassTag](f: T => TraversableOnce[U]): RDD[U] = withScope {
+
     val cleanF = sc.clean(f)
+  // 转换为MapPartition RDD
     new MapPartitionsRDD[U, T](this, (context, pid, iter) => iter.flatMap(cleanF))
   }
 
@@ -987,6 +994,7 @@ abstract class RDD[T: ClassTag](
    * all the data is loaded into the driver's memory.
    */
   def collect(): Array[T] = withScope {
+    // 调用runjob
     val results = sc.runJob(this, (iter: Iterator[T]) => iter.toArray)
     Array.concat(results: _*)
   }

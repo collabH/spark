@@ -827,6 +827,7 @@ class SparkContext(config: SparkConf) extends Logging {
       path: String,
       minPartitions: Int = defaultMinPartitions): RDD[String] = withScope {
     assertNotStopped()
+    // 创建一个Hadoop文件
     hadoopFile(path, classOf[TextInputFormat], classOf[LongWritable], classOf[Text],
       minPartitions).map(pair => pair._2.toString).setName(path)
   }
@@ -1005,7 +1006,7 @@ class SparkContext(config: SparkConf) extends Logging {
   }
 
   /** Get an RDD for a Hadoop file with an arbitrary InputFormat
-   *
+   * 得到一个Hadoop File的RDD
    * @note Because Hadoop's RecordReader class re-uses the same Writable object for each
    * record, directly caching the returned RDD or directly passing it to an aggregation or shuffle
    * operation will create many references to the same object.
@@ -1032,8 +1033,11 @@ class SparkContext(config: SparkConf) extends Logging {
     FileSystem.getLocal(hadoopConfiguration)
 
     // A Hadoop configuration can be about 10 KB, which is pretty big, so broadcast it.
+    // 广播配置
     val confBroadcast = broadcast(new SerializableConfiguration(hadoopConfiguration))
+    // 设置函数输入路径
     val setInputPathsFunc = (jobConf: JobConf) => FileInputFormat.setInputPaths(jobConf, path)
+    //创建HadoopRDD
     new HadoopRDD(
       this,
       confBroadcast,
@@ -2058,6 +2062,7 @@ class SparkContext(config: SparkConf) extends Logging {
     if (conf.getBoolean("spark.logLineage", false)) {
       logInfo("RDD's recursive dependencies:\n" + rdd.toDebugString)
     }
+    // 通过dagScheduler，有向无环图调度
     dagScheduler.runJob(rdd, cleanedFunc, partitions, callSite, resultHandler, localProperties.get)
     progressBar.foreach(_.finishAll())
     rdd.doCheckpoint()

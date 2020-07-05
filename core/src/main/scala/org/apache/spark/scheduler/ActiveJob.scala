@@ -48,6 +48,7 @@ private[spark] class ActiveJob(
     val properties: Properties) {
 
   /**
+    * 拿到分区的数量，模式匹配
    * Number of partitions we need to compute for this job. Note that result stages may not need
    * to compute all partitions in their target RDD, for actions like first() and lookup().
    */
