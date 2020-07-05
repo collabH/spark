@@ -62,6 +62,7 @@ import org.apache.spark.util._
  * The latter two operations are currently supported only for standalone and Mesos cluster modes.
  */
 private[deploy] object SparkSubmitAction extends Enumeration {
+  // 默认值为打印spark 版本
   type SparkSubmitAction = Value
   val SUBMIT, KILL, REQUEST_STATUS, PRINT_VERSION = Value
 }
@@ -148,14 +149,15 @@ private[spark] class SparkSubmit extends Logging {
     logInfo("Type --help for more information.")
   }
 
-  /**
-   * Submit the application using the provided parameters, ensuring to first wrap
+  /*** Submit the application using the provided parameters, ensuring to first wrap
    * in a doAs when --proxy-user is specified.
    */
   @tailrec
   private def submit(args: SparkSubmitArguments, uninitLog: Boolean): Unit = {
 
+    // 运行main方法
     def doRunMain(): Unit = {
+      //代理用户
       if (args.proxyUser != null) {
         val proxyUser = UserGroupInformation.createProxyUser(args.proxyUser,
           UserGroupInformation.getCurrentUser())
@@ -186,6 +188,7 @@ private[spark] class SparkSubmit extends Logging {
     //   (2) The new REST-based gateway introduced in Spark 1.3
     // The latter is the default behavior as of Spark 1.3, but Spark submit will fail over
     // to use the legacy gateway if the master endpoint turns out to be not a REST server.
+    // 判断执行模式，如果是standlone模式并且内部使用
     if (args.isStandaloneCluster && args.useRest) {
       try {
         logInfo("Running Spark using the REST application submission protocol.")
@@ -303,6 +306,7 @@ private[spark] class SparkSubmit extends Logging {
     if (!isMesosCluster && !isStandAloneCluster) {
       // Resolve maven dependencies if there are any and add classpath to jars. Add them to py-files
       // too for packages that include Python code
+      // 解析maven依赖
       val resolvedMavenCoordinates = DependencyUtils.resolveMavenDependencies(
         args.packagesExclusions, args.packages, args.repositories, args.ivyRepoPath,
         args.ivySettingsPath)
@@ -626,10 +630,12 @@ private[spark] class SparkSubmit extends Logging {
     // In client mode, launch the application main class directly
     // In addition, add the main application jar and any added jars (if any) to the classpath
     if (deployMode == CLIENT) {
+      // --class指定
       childMainClass = args.mainClass
       if (localPrimaryResource != null && isUserJar(localPrimaryResource)) {
         childClasspath += localPrimaryResource
       }
+      // 如果指定的--jar会将指定的jar传递到childClasspath
       if (localJars != null) { childClasspath ++= localJars.split(",") }
     }
     // Add the main application jar and any added jars to classpath in case YARN client
@@ -874,12 +880,15 @@ private[spark] class SparkSubmit extends Logging {
    * running cluster deploy mode or python applications.
    */
   private def runMain(args: SparkSubmitArguments, uninitLog: Boolean): Unit = {
+    // 准备环境变量
     val (childArgs, childClasspath, sparkConf, childMainClass) = prepareSubmitEnvironment(args)
     // Let the main class re-initialize the logging system once it starts.
+    // 是否打印日志
     if (uninitLog) {
       Logging.uninitialize()
     }
 
+    // 打印日志
     if (args.verbose) {
       logInfo(s"Main class:\n$childMainClass")
       logInfo(s"Arguments:\n${childArgs.mkString("\n")}")
@@ -888,8 +897,10 @@ private[spark] class SparkSubmit extends Logging {
       logInfo(s"Classpath elements:\n${childClasspath.mkString("\n")}")
       logInfo("\n")
     }
+    // 拿到submit类加载器
     val loader = getSubmitClassLoader(sparkConf)
     for (jar <- childClasspath) {
+      // 添加jar到classpath
       addJarToClasspath(jar, loader)
     }
 
@@ -914,6 +925,7 @@ private[spark] class SparkSubmit extends Logging {
         throw new SparkUserAppException(CLASS_NOT_FOUND_EXIT_STATUS)
     }
 
+    // 找到Driver的main方法
     val app: SparkApplication = if (classOf[SparkApplication].isAssignableFrom(mainClass)) {
       mainClass.getConstructor().newInstance().asInstanceOf[SparkApplication]
     } else {
@@ -945,6 +957,7 @@ private[spark] class SparkSubmit extends Logging {
 
 
 /**
+  * 执行spark应用程序的入口点
  * This entry point is used by the launcher library to start in-process Spark applications.
  */
 private[spark] object InProcessSparkSubmit {

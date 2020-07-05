@@ -74,12 +74,16 @@ private class ClientEndpoint(
     sys.props.get(key).orElse(conf.getOption(key))
   }
 
+  /**
+    * 启动
+    */
   override def onStart(): Unit = {
     driverArgs.cmd match {
       case "launch" =>
         // TODO: We could add an env variable here and intercept it in `sc.addJar` that would
         //       truncate filesystem paths similar to what YARN does. For now, we just require
         //       people call `addJar` assuming the jar is in the same directory.
+
         val mainClass = "org.apache.spark.deploy.worker.DriverWrapper"
 
         val classPathConf = config.DRIVER_CLASS_PATH.key
@@ -119,6 +123,7 @@ private class ClientEndpoint(
         asyncSendToMasterAndForwardReply[KillDriverResponse](RequestKillDriver(driverId))
     }
     logInfo("... waiting before polling master for driver state")
+    // 定时线程转发消息
     forwardMessageThread.scheduleAtFixedRate(() => Utils.tryLogNonFatalError {
       monitorDriverStatus()
     }, 5000, REPORT_DRIVER_STATUS_INTERVAL, TimeUnit.MILLISECONDS)
@@ -275,6 +280,7 @@ object Client {
 private[spark] class ClientApp extends SparkApplication {
 
   override def start(args: Array[String], conf: SparkConf): Unit = {
+    // 封装参数
     val driverArgs = new ClientArguments(args)
 
     if (!conf.contains(RPC_ASK_TIMEOUT)) {
@@ -287,6 +293,7 @@ private[spark] class ClientApp extends SparkApplication {
 
     val masterEndpoints = driverArgs.masters.map(RpcAddress.fromSparkURL).
       map(rpcEnv.setupEndpointRef(_, Master.ENDPOINT_NAME))
+    // 创建ClientEndpoint
     rpcEnv.setupEndpoint("client", new ClientEndpoint(rpcEnv, driverArgs, masterEndpoints, conf))
 
     rpcEnv.awaitTermination()

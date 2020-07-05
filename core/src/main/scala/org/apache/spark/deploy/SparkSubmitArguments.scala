@@ -22,28 +22,41 @@ import java.lang.reflect.InvocationTargetException
 import java.nio.charset.StandardCharsets
 import java.util.{List => JList}
 
+import org.apache.spark.deploy.SparkSubmitAction._
+import org.apache.spark.internal.config.DYN_ALLOCATION_ENABLED
+import org.apache.spark.internal.{Logging, config}
+import org.apache.spark.launcher.SparkSubmitArgumentsParser
+import org.apache.spark.network.util.JavaUtils
+import org.apache.spark.util.Utils
+import org.apache.spark.{SparkConf, SparkException, SparkUserAppException}
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable.{ArrayBuffer, HashMap}
 import scala.io.Source
 import scala.util.Try
 
-import org.apache.spark.{SparkConf, SparkException, SparkUserAppException}
-import org.apache.spark.deploy.SparkSubmitAction._
-import org.apache.spark.internal.{config, Logging}
-import org.apache.spark.internal.config.DYN_ALLOCATION_ENABLED
-import org.apache.spark.launcher.SparkSubmitArgumentsParser
-import org.apache.spark.network.util.JavaUtils
-import org.apache.spark.util.Utils
-
 /**
- * Parses and encapsulates arguments from the spark-submit script.
- * The env argument is used for testing.
- */
+  * Parses and encapsulates arguments from the spark-submit script.
+  * The env argument is used for testing.
+  */
 private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, String] = sys.env)
   extends SparkSubmitArgumentsParser with Logging {
+  /**
+    * 部署方式
+    */
   var master: String = null
+  /**
+    * 部署模式
+    */
   var deployMode: String = null
+  /**
+    * executor内存
+    */
+
   var executorMemory: String = null
+  /**
+    * executor核数
+    */
   var executorCores: String = null
   var totalExecutorCores: String = null
   var propertiesFile: String = null
@@ -83,6 +96,7 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
   var submissionToRequestStatusFor: String = null
   var useRest: Boolean = false // used internally
 
+  // 延迟加载默认spark参数
   /** Default properties present in the currently defined defaults file. */
   lazy val defaultSparkProperties: HashMap[String, String] = {
     val defaultProperties = new HashMap[String, String]()
@@ -108,6 +122,7 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
   parse(args.asJava)
 
   // Populate `sparkProperties` map from properties file
+  // 合并默认spark参数
   mergeDefaultSparkProperties()
   // Remove keys that don't start with "spark." from `sparkProperties`.
   ignoreNonSparkProperties()
@@ -119,9 +134,9 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
   validateArguments()
 
   /**
-   * Merge values from the default properties file with those specified through --conf.
-   * When this is called, `sparkProperties` is already filled with configs from the latter.
-   */
+    * Merge values from the default properties file with those specified through --conf.
+    * When this is called, `sparkProperties` is already filled with configs from the latter.
+    */
   private def mergeDefaultSparkProperties(): Unit = {
     // Use common defaults file, if not specified by user
     propertiesFile = Option(propertiesFile).getOrElse(Utils.getDefaultPropertiesFile(env))
@@ -134,8 +149,8 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
   }
 
   /**
-   * Remove keys that don't start with "spark." from `sparkProperties`.
-   */
+    * Remove keys that don't start with "spark." from `sparkProperties`.
+    */
   private def ignoreNonSparkProperties(): Unit = {
     sparkProperties.keys.foreach { k =>
       if (!k.startsWith("spark.")) {
@@ -146,8 +161,9 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
   }
 
   /**
-   * Load arguments from environment variables, Spark properties etc.
-   */
+    * 加载环境变量中的参数
+    * Load arguments from environment variables, Spark properties etc.
+    */
   private def loadEnvironmentArguments(): Unit = {
     master = Option(master)
       .orElse(sparkProperties.get("spark.master"))
@@ -245,11 +261,11 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
       error("Must specify a primary resource (JAR or Python or R file)")
     }
     if (driverMemory != null
-        && Try(JavaUtils.byteStringAsBytes(driverMemory)).getOrElse(-1L) <= 0) {
+      && Try(JavaUtils.byteStringAsBytes(driverMemory)).getOrElse(-1L) <= 0) {
       error("Driver memory must be a positive number")
     }
     if (executorMemory != null
-        && Try(JavaUtils.byteStringAsBytes(executorMemory)).getOrElse(-1L) <= 0) {
+      && Try(JavaUtils.byteStringAsBytes(executorMemory)).getOrElse(-1L) <= 0) {
       error("Executor memory must be a positive number")
     }
     if (executorCores != null && Try(executorCores.toInt).getOrElse(-1) <= 0) {
@@ -294,36 +310,36 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
 
   override def toString: String = {
     s"""Parsed arguments:
-    |  master                  $master
-    |  deployMode              $deployMode
-    |  executorMemory          $executorMemory
-    |  executorCores           $executorCores
-    |  totalExecutorCores      $totalExecutorCores
-    |  propertiesFile          $propertiesFile
-    |  driverMemory            $driverMemory
-    |  driverCores             $driverCores
-    |  driverExtraClassPath    $driverExtraClassPath
-    |  driverExtraLibraryPath  $driverExtraLibraryPath
-    |  driverExtraJavaOptions  $driverExtraJavaOptions
-    |  supervise               $supervise
-    |  queue                   $queue
-    |  numExecutors            $numExecutors
-    |  files                   $files
-    |  pyFiles                 $pyFiles
-    |  archives                $archives
-    |  mainClass               $mainClass
-    |  primaryResource         $primaryResource
-    |  name                    $name
-    |  childArgs               [${childArgs.mkString(" ")}]
-    |  jars                    $jars
-    |  packages                $packages
-    |  packagesExclusions      $packagesExclusions
-    |  repositories            $repositories
-    |  verbose                 $verbose
-    |
+       |  master                  $master
+       |  deployMode              $deployMode
+       |  executorMemory          $executorMemory
+       |  executorCores           $executorCores
+       |  totalExecutorCores      $totalExecutorCores
+       |  propertiesFile          $propertiesFile
+       |  driverMemory            $driverMemory
+       |  driverCores             $driverCores
+       |  driverExtraClassPath    $driverExtraClassPath
+       |  driverExtraLibraryPath  $driverExtraLibraryPath
+       |  driverExtraJavaOptions  $driverExtraJavaOptions
+       |  supervise               $supervise
+       |  queue                   $queue
+       |  numExecutors            $numExecutors
+       |  files                   $files
+       |  pyFiles                 $pyFiles
+       |  archives                $archives
+       |  mainClass               $mainClass
+       |  primaryResource         $primaryResource
+       |  name                    $name
+       |  childArgs               [${childArgs.mkString(" ")}]
+       |  jars                    $jars
+       |  packages                $packages
+       |  packagesExclusions      $packagesExclusions
+       |  repositories            $repositories
+       |  verbose                 $verbose
+       |
     |Spark properties used, including those specified through
-    | --conf and those from the properties file $propertiesFile:
-    |${Utils.redact(sparkProperties).mkString("  ", "\n  ", "\n")}
+       | --conf and those from the properties file $propertiesFile:
+       |${Utils.redact(sparkProperties).mkString("  ", "\n  ", "\n")}
     """.stripMargin
   }
 
@@ -448,11 +464,11 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
   }
 
   /**
-   * Handle unrecognized command line options.
-   *
-   * The first unrecognized option is treated as the "primary resource". Everything else is
-   * treated as application arguments.
-   */
+    * Handle unrecognized command line options.
+    *
+    * The first unrecognized option is treated as the "primary resource". Everything else is
+    * treated as application arguments.
+    */
   override protected def handleUnknown(opt: String): Boolean = {
     if (opt.startsWith("-")) {
       error(s"Unrecognized option '$opt'.")
@@ -487,83 +503,83 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
     val mem_mb = Utils.DEFAULT_DRIVER_MEM_MB
     logInfo(
       s"""
-        |Options:
-        |  --master MASTER_URL         spark://host:port, mesos://host:port, yarn,
-        |                              k8s://https://host:port, or local (Default: local[*]).
-        |  --deploy-mode DEPLOY_MODE   Whether to launch the driver program locally ("client") or
-        |                              on one of the worker machines inside the cluster ("cluster")
-        |                              (Default: client).
-        |  --class CLASS_NAME          Your application's main class (for Java / Scala apps).
-        |  --name NAME                 A name of your application.
-        |  --jars JARS                 Comma-separated list of jars to include on the driver
-        |                              and executor classpaths.
-        |  --packages                  Comma-separated list of maven coordinates of jars to include
-        |                              on the driver and executor classpaths. Will search the local
-        |                              maven repo, then maven central and any additional remote
-        |                              repositories given by --repositories. The format for the
-        |                              coordinates should be groupId:artifactId:version.
-        |  --exclude-packages          Comma-separated list of groupId:artifactId, to exclude while
-        |                              resolving the dependencies provided in --packages to avoid
-        |                              dependency conflicts.
-        |  --repositories              Comma-separated list of additional remote repositories to
-        |                              search for the maven coordinates given with --packages.
-        |  --py-files PY_FILES         Comma-separated list of .zip, .egg, or .py files to place
-        |                              on the PYTHONPATH for Python apps.
-        |  --files FILES               Comma-separated list of files to be placed in the working
-        |                              directory of each executor. File paths of these files
-        |                              in executors can be accessed via SparkFiles.get(fileName).
-        |
+         |Options:
+         |  --master MASTER_URL         spark://host:port, mesos://host:port, yarn,
+         |                              k8s://https://host:port, or local (Default: local[*]).
+         |  --deploy-mode DEPLOY_MODE   Whether to launch the driver program locally ("client") or
+         |                              on one of the worker machines inside the cluster ("cluster")
+         |                              (Default: client).
+         |  --class CLASS_NAME          Your application's main class (for Java / Scala apps).
+         |  --name NAME                 A name of your application.
+         |  --jars JARS                 Comma-separated list of jars to include on the driver
+         |                              and executor classpaths.
+         |  --packages                  Comma-separated list of maven coordinates of jars to include
+         |                              on the driver and executor classpaths. Will search the local
+         |                              maven repo, then maven central and any additional remote
+         |                              repositories given by --repositories. The format for the
+         |                              coordinates should be groupId:artifactId:version.
+         |  --exclude-packages          Comma-separated list of groupId:artifactId, to exclude while
+         |                              resolving the dependencies provided in --packages to avoid
+         |                              dependency conflicts.
+         |  --repositories              Comma-separated list of additional remote repositories to
+         |                              search for the maven coordinates given with --packages.
+         |  --py-files PY_FILES         Comma-separated list of .zip, .egg, or .py files to place
+         |                              on the PYTHONPATH for Python apps.
+         |  --files FILES               Comma-separated list of files to be placed in the working
+         |                              directory of each executor. File paths of these files
+         |                              in executors can be accessed via SparkFiles.get(fileName).
+         |
         |  --conf, -c PROP=VALUE       Arbitrary Spark configuration property.
-        |  --properties-file FILE      Path to a file from which to load extra properties. If not
-        |                              specified, this will look for conf/spark-defaults.conf.
-        |
+         |  --properties-file FILE      Path to a file from which to load extra properties. If not
+         |                              specified, this will look for conf/spark-defaults.conf.
+         |
         |  --driver-memory MEM         Memory for driver (e.g. 1000M, 2G) (Default: ${mem_mb}M).
-        |  --driver-java-options       Extra Java options to pass to the driver.
-        |  --driver-library-path       Extra library path entries to pass to the driver.
-        |  --driver-class-path         Extra class path entries to pass to the driver. Note that
-        |                              jars added with --jars are automatically included in the
-        |                              classpath.
-        |
+         |  --driver-java-options       Extra Java options to pass to the driver.
+         |  --driver-library-path       Extra library path entries to pass to the driver.
+         |  --driver-class-path         Extra class path entries to pass to the driver. Note that
+         |                              jars added with --jars are automatically included in the
+         |                              classpath.
+         |
         |  --executor-memory MEM       Memory per executor (e.g. 1000M, 2G) (Default: 1G).
-        |
+         |
         |  --proxy-user NAME           User to impersonate when submitting the application.
-        |                              This argument does not work with --principal / --keytab.
-        |
+         |                              This argument does not work with --principal / --keytab.
+         |
         |  --help, -h                  Show this help message and exit.
-        |  --verbose, -v               Print additional debug output.
-        |  --version,                  Print the version of current Spark.
-        |
+         |  --verbose, -v               Print additional debug output.
+         |  --version,                  Print the version of current Spark.
+         |
         | Cluster deploy mode only:
-        |  --driver-cores NUM          Number of cores used by the driver, only in cluster mode
-        |                              (Default: 1).
-        |
+         |  --driver-cores NUM          Number of cores used by the driver, only in cluster mode
+         |                              (Default: 1).
+         |
         | Spark standalone or Mesos with cluster deploy mode only:
-        |  --supervise                 If given, restarts the driver on failure.
-        |
+         |  --supervise                 If given, restarts the driver on failure.
+         |
         | Spark standalone, Mesos or K8s with cluster deploy mode only:
-        |  --kill SUBMISSION_ID        If given, kills the driver specified.
-        |  --status SUBMISSION_ID      If given, requests the status of the driver specified.
-        |
+         |  --kill SUBMISSION_ID        If given, kills the driver specified.
+         |  --status SUBMISSION_ID      If given, requests the status of the driver specified.
+         |
         | Spark standalone, Mesos and Kubernetes only:
-        |  --total-executor-cores NUM  Total cores for all executors.
-        |
+         |  --total-executor-cores NUM  Total cores for all executors.
+         |
         | Spark standalone, YARN and Kubernetes only:
-        |  --executor-cores NUM        Number of cores used by each executor. (Default: 1 in
-        |                              YARN and K8S modes, or all available cores on the worker
-        |                              in standalone mode).
-        |
+         |  --executor-cores NUM        Number of cores used by each executor. (Default: 1 in
+         |                              YARN and K8S modes, or all available cores on the worker
+         |                              in standalone mode).
+         |
         | Spark on YARN and Kubernetes only:
-        |  --num-executors NUM         Number of executors to launch (Default: 2).
-        |                              If dynamic allocation is enabled, the initial number of
-        |                              executors will be at least NUM.
-        |  --principal PRINCIPAL       Principal to be used to login to KDC.
-        |  --keytab KEYTAB             The full path to the file that contains the keytab for the
-        |                              principal specified above.
-        |
+         |  --num-executors NUM         Number of executors to launch (Default: 2).
+         |                              If dynamic allocation is enabled, the initial number of
+         |                              executors will be at least NUM.
+         |  --principal PRINCIPAL       Principal to be used to login to KDC.
+         |  --keytab KEYTAB             The full path to the file that contains the keytab for the
+         |                              principal specified above.
+         |
         | Spark on YARN only:
-        |  --queue QUEUE_NAME          The YARN queue to submit to (Default: "default").
-        |  --archives ARCHIVES         Comma separated list of archives to be extracted into the
-        |                              working directory of each executor.
+         |  --queue QUEUE_NAME          The YARN queue to submit to (Default: "default").
+         |  --archives ARCHIVES         Comma separated list of archives to be extracted into the
+         |                              working directory of each executor.
       """.stripMargin
     )
 
@@ -576,12 +592,12 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
   }
 
   /**
-   * Run the Spark SQL CLI main class with the "--help" option and catch its output. Then filter
-   * the results to remove unwanted lines.
-   *
-   * Since the CLI will call `System.exit()`, we install a security manager to prevent that call
-   * from working, and restore the original one afterwards.
-   */
+    * Run the Spark SQL CLI main class with the "--help" option and catch its output. Then filter
+    * the results to remove unwanted lines.
+    *
+    * Since the CLI will call `System.exit()`, we install a security manager to prevent that call
+    * from working, and restore the original one afterwards.
+    */
   private def getSqlShellOptions(): String = {
     val currentOut = System.out
     val currentErr = System.err

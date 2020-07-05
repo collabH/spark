@@ -50,6 +50,10 @@ private[deploy] class ClientArguments(args: Array[String]) {
 
   parse(args.toList)
 
+  /**
+    * 解析Client启动参数
+    * @param args
+    */
   @tailrec
   private def parse(args: List[String]): Unit = args match {
     case ("--cores" | "-c") :: IntParam(value) :: tail =>
