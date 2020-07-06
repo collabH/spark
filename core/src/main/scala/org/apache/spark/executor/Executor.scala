@@ -200,8 +200,15 @@ private[spark] class Executor(
 
   private[executor] def numRunningTasks: Int = runningTasks.size()
 
+  /**
+    *  启动task
+    * @param context
+    * @param taskDescription
+    */
   def launchTask(context: ExecutorBackend, taskDescription: TaskDescription): Unit = {
+    // 创建任务线程
     val tr = new TaskRunner(context, taskDescription)
+    // 任务id添加进runningTasks集合
     runningTasks.put(taskDescription.taskId, tr)
     threadPool.execute(tr)
   }
@@ -267,6 +274,7 @@ private[spark] class Executor(
 
   /** Returns the total amount of time this JVM process has spent in garbage collection. */
   private def computeTotalGcTime(): Long = {
+    // 拿到gc耗时
     ManagementFactory.getGarbageCollectorMXBeans.asScala.map(_.getCollectionTime).sum
   }
 
@@ -350,10 +358,16 @@ private[spark] class Executor(
       (accums, accUpdates)
     }
 
+    /**
+      * 任务执行方法
+      */
     override def run(): Unit = {
+      // 拿到线程Id
       threadId = Thread.currentThread.getId
+      // 设置线程名称
       Thread.currentThread.setName(threadName)
       val threadMXBean = ManagementFactory.getThreadMXBean
+      // 拿到任务内存管理器
       val taskMemoryManager = new TaskMemoryManager(env.memoryManager, taskId)
       val deserializeStartTime = System.currentTimeMillis()
       val deserializeStartCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
@@ -362,9 +376,11 @@ private[spark] class Executor(
       Thread.currentThread.setContextClassLoader(replClassLoader)
       val ser = env.closureSerializer.newInstance()
       logInfo(s"Running $taskName (TID $taskId)")
+      // 更新Task状态发送给集群的Scheduler
       execBackend.statusUpdate(taskId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
       var taskStartTime: Long = 0
       var taskStartCpu: Long = 0
+      // 开始gc时间
       startGCTime = computeTotalGcTime()
 
       try {
@@ -405,6 +421,7 @@ private[spark] class Executor(
         } else 0L
         var threwException = true
         val value = Utils.tryWithSafeFinally {
+          // 执行task，run方法
           val res = task.run(
             taskAttemptId = taskId,
             attemptNumber = taskDescription.attemptNumber,
@@ -415,6 +432,7 @@ private[spark] class Executor(
           val releasedLocks = env.blockManager.releaseAllLocksForTask(taskId)
           val freedMemory = taskMemoryManager.cleanUpAllAllocatedMemory()
 
+          // 资源不够
           if (freedMemory > 0 && !threwException) {
             val errMsg = s"Managed memory leak detected; size = $freedMemory bytes, TID = $taskId"
             if (conf.getBoolean("spark.unsafe.exceptionOnMemoryLeak", false)) {

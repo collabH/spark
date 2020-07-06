@@ -72,14 +72,20 @@ private[spark] class ResultTask[T, U](
     if (locs == null) Nil else locs.toSet.toSeq
   }
 
+  /**
+    * 模板方法
+    * @param context
+    * @return
+    */
   override def runTask(context: TaskContext): U = {
-    // Deserialize the RDD and the func using the broadcast variables.
+    // Deserialize the RDD and the func using the broadcast variables. 反序列化RDD和func使用广播变量
     val threadMXBean = ManagementFactory.getThreadMXBean
     val deserializeStartTime = System.currentTimeMillis()
     val deserializeStartCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime
     } else 0L
     val ser = SparkEnv.get.closureSerializer.newInstance()
+    // 反序列化
     val (rdd, func) = ser.deserialize[(RDD[T], (TaskContext, Iterator[T]) => U)](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
     _executorDeserializeTime = System.currentTimeMillis() - deserializeStartTime
@@ -87,6 +93,7 @@ private[spark] class ResultTask[T, U](
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
     } else 0L
 
+    // 执行func，传递RDD遍历器
     func(context, rdd.iterator(partition, context))
   }
 

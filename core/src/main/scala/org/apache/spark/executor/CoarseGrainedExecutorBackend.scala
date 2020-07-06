@@ -38,7 +38,7 @@ import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 /**
-  * Executor后端类 复制逻辑交互
+  * Executor后端类 负责逻辑交互
   * @param rpcEnv
   * @param driverUrl
   * @param executorId
@@ -116,8 +116,10 @@ private[spark] class CoarseGrainedExecutorBackend(
       if (executor == null) {
         exitExecutor(1, "Received LaunchTask command but executor was null")
       } else {
+        //反序列化
         val taskDesc = TaskDescription.decode(data.value)
         logInfo("Got assigned task " + taskDesc.taskId)
+        // 执行task
         executor.launchTask(this, taskDesc)
       }
 

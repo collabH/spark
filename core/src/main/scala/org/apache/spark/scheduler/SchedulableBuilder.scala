@@ -29,9 +29,10 @@ import org.apache.spark.scheduler.SchedulingMode.SchedulingMode
 import org.apache.spark.util.Utils
 
 /**
+  * 一个可调度树接口
  * An interface to build Schedulable tree
- * buildPools: build the tree nodes(pools)
- * addTaskSetManager: build the leaf nodes(TaskSetManagers)
+ * buildPools: build the tree nodes(pools) 构建树节点（池）
+ * addTaskSetManager: build the leaf nodes(TaskSetManagers) 构造叶子节点(TaskSetManagers)
  */
 private[spark] trait SchedulableBuilder {
   def rootPool: Pool
@@ -53,14 +54,24 @@ private[spark] class FIFOSchedulableBuilder(val rootPool: Pool)
   }
 }
 
+/**
+  * 公平调度器
+  * @param rootPool
+  * @param conf
+  */
 private[spark] class FairSchedulableBuilder(val rootPool: Pool, conf: SparkConf)
   extends SchedulableBuilder with Logging {
 
+  // 调度程序分配文件属性
   val SCHEDULER_ALLOCATION_FILE_PROPERTY = "spark.scheduler.allocation.file"
   val schedulerAllocFile = conf.getOption(SCHEDULER_ALLOCATION_FILE_PROPERTY)
+  // 公平调度器默认配置
   val DEFAULT_SCHEDULER_FILE = "fairscheduler.xml"
+  // 调度器池配置
   val FAIR_SCHEDULER_PROPERTIES = "spark.scheduler.pool"
+  // 默认Pool名称
   val DEFAULT_POOL_NAME = "default"
+  // 最小分片
   val MINIMUM_SHARES_PROPERTY = "minShare"
   val SCHEDULING_MODE_PROPERTY = "schedulingMode"
   val WEIGHT_PROPERTY = "weight"

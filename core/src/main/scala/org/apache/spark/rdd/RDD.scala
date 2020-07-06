@@ -308,6 +308,7 @@ abstract class RDD[T: ClassTag](
    * subclasses of RDD.
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
+    // 根据存储级别
     if (storageLevel != StorageLevel.NONE) {
       getOrCompute(split, context)
     } else {
