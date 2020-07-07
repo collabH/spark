@@ -49,6 +49,7 @@ private[spark] class SortShuffleWriter[K, V, C](
 
   /** Write a bunch of records to this task's output */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
+    // 如果存在map端预聚合
     sorter = if (dep.mapSideCombine) {
       new ExternalSorter[K, V, C](
         context, dep.aggregator, Some(dep.partitioner), dep.keyOrdering, dep.serializer)
@@ -59,6 +60,7 @@ private[spark] class SortShuffleWriter[K, V, C](
       new ExternalSorter[K, V, V](
         context, aggregator = None, Some(dep.partitioner), ordering = None, dep.serializer)
     }
+    // 进行排序
     sorter.insertAll(records)
 
     // Don't bother including the time to open the merged output file in the shuffle write time,
@@ -103,13 +105,19 @@ private[spark] class SortShuffleWriter[K, V, C](
   }
 }
 
+/**
+  * 判断SortShuffleWriter是否满足bypass机制
+  */
 private[spark] object SortShuffleWriter {
   def shouldBypassMergeSort(conf: SparkConf, dep: ShuffleDependency[_, _, _]): Boolean = {
     // We cannot bypass sorting if we need to do map-side aggregation.
+    // 如果shuffle依赖存在map端聚合，
     if (dep.mapSideCombine) {
       false
     } else {
+      // 拿到spark.shuffle.sort.bypassMergeThreshold配置
       val bypassMergeThreshold: Int = conf.getInt("spark.shuffle.sort.bypassMergeThreshold", 200)
+      // 如果分区数小于等于bypassMergeThreshold则进行bypass机制
       dep.partitioner.numPartitions <= bypassMergeThreshold
     }
   }

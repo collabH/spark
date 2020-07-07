@@ -176,13 +176,18 @@ private[spark] class ExternalSorter[K, V, C](
    */
   private[spark] def numSpills: Int = spills.size
 
+  /**
+    * 数据放入排序器排序
+    * @param records
+    */
   def insertAll(records: Iterator[Product2[K, V]]): Unit = {
     // TODO: stop combining if we find that the reduction factor isn't high
     val shouldCombine = aggregator.isDefined
-
+    // 是否需要预聚合
     if (shouldCombine) {
       // Combine values in-memory first using our AppendOnlyMap
       val mergeValue = aggregator.get.mergeValue
+      // 创建预聚合函数
       val createCombiner = aggregator.get.createCombiner
       var kv: Product2[K, V] = null
       val update = (hadValue: Boolean, oldValue: C) => {
@@ -192,6 +197,7 @@ private[spark] class ExternalSorter[K, V, C](
         addElementsRead()
         kv = records.next()
         map.changeValue((getPartition(kv._1), kv._1), update)
+        // 可能需要写入磁盘
         maybeSpillCollection(usingMap = true)
       }
     } else {

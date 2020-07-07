@@ -102,6 +102,7 @@ private[spark] class ShuffleMapTask(
     try {
       // shuffle管理器中拿去writer
       val manager = SparkEnv.get.shuffleManager
+      // 拿到Writer，Bypass或Sort
       writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
       writer.stop(success = true).get
