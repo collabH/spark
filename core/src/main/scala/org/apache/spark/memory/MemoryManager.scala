@@ -30,7 +30,9 @@ import org.apache.spark.unsafe.memory.MemoryAllocator
 
 /**
  * An abstract memory manager that enforces how memory is shared between execution and storage.
- *
+ *  一个抽象内存管理器，用于强制执行和存储之间共享内存。
+  *  execution memory用于shuffle，join，sort和aggregations的完成。
+  *  storage memory用于缓存和广播内部的数据在集群中传递
  * In this context, execution memory refers to that used for computation in shuffles, joins,
  * sorts and aggregations, while storage memory refers to that used for caching and propagating
  * internal data across the cluster. There exists one MemoryManager per JVM.
@@ -85,6 +87,7 @@ private[spark] abstract class MemoryManager(
   }
 
   /**
+    * 申请存储内存
    * Acquire N bytes of memory to cache the given block, evicting existing ones if necessary.
    *
    * @return whether all N bytes were successfully granted.
