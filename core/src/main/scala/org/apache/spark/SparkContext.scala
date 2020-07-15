@@ -813,6 +813,7 @@ class SparkContext(config: SparkConf) extends Logging {
   def makeRDD[T: ClassTag](seq: Seq[(T, Seq[String])]): RDD[T] = withScope {
     assertNotStopped()
     val indexToPrefs = seq.zipWithIndex.map(t => (t._2, t._1._2)).toMap
+    //默认是去seq的数量
     new ParallelCollectionRDD[T](this, seq.map(_._1), math.max(seq.size, 1), indexToPrefs)
   }
 

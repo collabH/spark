@@ -28,7 +28,7 @@ import org.apache.spark.storage.memory.MemoryStore
  * (caching).
  *
  * @param lock a [[MemoryManager]] instance to synchronize on
- * @param memoryMode the type of memory tracked by this pool (on- or off-heap)
+ * @param memoryMode the type of memory tracked by this pool (on- or off-heap) 内存存储模式
  */
 private[memory] class StorageMemoryPool(
     lock: Object,
@@ -43,6 +43,10 @@ private[memory] class StorageMemoryPool(
   @GuardedBy("lock")
   private[this] var _memoryUsed: Long = 0L
 
+  /**
+    * 使用内存亮
+    * @return
+    */
   override def memoryUsed: Long = lock.synchronized {
     _memoryUsed
   }

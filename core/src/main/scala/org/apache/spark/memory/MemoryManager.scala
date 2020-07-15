@@ -45,6 +45,9 @@ private[spark] abstract class MemoryManager(
 
   // -- Methods related to memory allocation policies and bookkeeping ------------------------------
 
+  /**
+    *  堆内/堆外，内存管理池
+    */
   @GuardedBy("this")
   protected val onHeapStorageMemoryPool = new StorageMemoryPool(this, MemoryMode.ON_HEAP)
   @GuardedBy("this")

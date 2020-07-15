@@ -97,6 +97,7 @@ private[spark] class ExternalSorter[K, V, C](
 
   private val conf = SparkEnv.get.conf
 
+  // 拿到分区个数
   private val numPartitions = partitioner.map(_.numPartitions).getOrElse(1)
   private val shouldPartition = numPartitions > 1
   private def getPartition(key: K): Int = {
