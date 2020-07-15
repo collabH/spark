@@ -120,7 +120,7 @@ private[spark] class ByteBufferBlockData(
 private[spark] class BlockManager(
     executorId: String,
     rpcEnv: RpcEnv,
-    val master: BlockManagerMaster,
+    val master: BlockManagerMaster,// Driver端BlockManagerMaster
     val serializerManager: SerializerManager,
     val conf: SparkConf,
     memoryManager: MemoryManager,
