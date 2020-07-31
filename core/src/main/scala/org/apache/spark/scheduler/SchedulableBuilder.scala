@@ -193,16 +193,19 @@ private[spark] class FairSchedulableBuilder(val rootPool: Pool, conf: SparkConf)
 
   override def addTaskSetManager(manager: Schedulable, properties: Properties) {
     val poolName = if (properties != null) {
+      // 配置调度池名称
         properties.getProperty(FAIR_SCHEDULER_PROPERTIES, DEFAULT_POOL_NAME)
       } else {
         DEFAULT_POOL_NAME
       }
+    // 从rootPool拿，没有就创建
     var parentPool = rootPool.getSchedulableByName(poolName)
     if (parentPool == null) {
       // we will create a new pool that user has configured in app
-      // instead of being defined in xml file
+      // instead of being defined in xml file，默认FIFO
       parentPool = new Pool(poolName, DEFAULT_SCHEDULING_MODE,
         DEFAULT_MINIMUM_SHARE, DEFAULT_WEIGHT)
+      // 任务添加到Pool中
       rootPool.addSchedulable(parentPool)
       logWarning(s"A job was submitted with scheduler pool $poolName, which has not been " +
         "configured. This can happen when the file that pools are read from isn't set, or " +

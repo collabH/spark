@@ -25,8 +25,9 @@ import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.internal.Logging
 import org.apache.spark.scheduler.SchedulingMode.SchedulingMode
 
-/**
+/***
  * A Schedulable entity that represents collection of Pools or TaskSetManagers
+  * 可调度实体，表示池或TaskSetManagers的集合
  */
 private[spark] class Pool(
     val poolName: String,
@@ -96,8 +97,10 @@ private[spark] class Pool(
     shouldRevive
   }
 
+  // 排序taskset在队列
   override def getSortedTaskSetQueue: ArrayBuffer[TaskSetManager] = {
     val sortedTaskSetQueue = new ArrayBuffer[TaskSetManager]
+    // 根据对应的算法排序，便利排序后的taskset放到sortedTaskSetQueue中
     val sortedSchedulableQueue =
       schedulableQueue.asScala.toSeq.sortWith(taskSetSchedulingAlgorithm.comparator)
     for (schedulable <- sortedSchedulableQueue) {

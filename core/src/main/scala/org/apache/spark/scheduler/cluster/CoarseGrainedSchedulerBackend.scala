@@ -137,6 +137,9 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
           }
         }
 
+      /**
+        * submitTasks
+        */
       case ReviveOffers =>
         makeOffers()
 

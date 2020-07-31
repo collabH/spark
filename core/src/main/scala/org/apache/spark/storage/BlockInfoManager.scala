@@ -31,7 +31,7 @@ import org.apache.spark.internal.Logging
 
 /**
  * Tracks metadata for an individual block.
- *
+ * 追踪单个快的元数据
  * Instances of this class are _not_ thread-safe and are protected by locks in the
  * [[BlockInfoManager]].
  *
@@ -40,7 +40,7 @@ import org.apache.spark.internal.Logging
  *              does not imply that the block is actually resident in memory).
  * @param classTag the block's [[ClassTag]], used to select the serializer
  * @param tellMaster whether state changes for this block should be reported to the master. This
- *                   is true for most blocks, but is false for broadcast blocks.
+ *                   is true for most blocks, but is false for broadcast blocks. 宽的状态干煸是否需要上报给master
  */
 private[storage] class BlockInfo(
     val level: StorageLevel,

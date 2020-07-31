@@ -609,6 +609,7 @@ private[spark] class BlockManager(
               val diskValues = serializerManager.dataDeserializeStream(
                 blockId,
                 diskData.toInputStream())(info.classTag)
+              // 数据缓冲到内存
               maybeCacheDiskValuesInMemory(info, blockId, level, diskValues)
             } else {
               val stream = maybeCacheDiskBytesInMemory(info, blockId, level, diskData)
@@ -622,6 +623,7 @@ private[spark] class BlockManager(
           })
           Some(new BlockResult(ci, DataReadMethod.Disk, info.size))
         } else {
+          // 释放锁，保证数据一致性，读取时不能写入，阻塞写请求
           handleLocalReadFailure(blockId)
         }
     }
@@ -732,6 +734,7 @@ private[spark] class BlockManager(
 
     // Because all the remote blocks are registered in driver, it is not necessary to ask
     // all the slave executors to get block status.
+    // 从master获取数据文件信息，位置、大小
     val locationsAndStatus = master.getLocationsAndStatus(blockId)
     val blockSize = locationsAndStatus.map { b =>
       b.status.diskSize.max(b.status.memSize)
@@ -741,19 +744,22 @@ private[spark] class BlockManager(
     // If the block size is above the threshold, we should pass our FileManger to
     // BlockTransferService, which will leverage it to spill the block; if not, then passed-in
     // null value means the block will be persisted in memory.
+    // 如果读取数据超过配置，使用临时文件管理器
     val tempFileManager = if (blockSize > maxRemoteBlockToMem) {
       remoteBlockTempFileManager
     } else {
       null
     }
 
-    val locations = sortLocations(blockLocations)
+    // 排序
+    val locations: Seq[BlockManagerId] = sortLocations(blockLocations)
     val maxFetchFailures = locations.size
     var locationIterator = locations.iterator
     while (locationIterator.hasNext) {
       val loc = locationIterator.next()
       logDebug(s"Getting remote block $blockId from $loc")
       val data = try {
+        // 从其他节点拉取数据
         blockTransferService.fetchBlockSync(
           loc.host, loc.port, loc.executorId, blockId.toString, tempFileManager)
       } catch {
@@ -761,6 +767,7 @@ private[spark] class BlockManager(
           runningFailureCount += 1
           totalFailureCount += 1
 
+          // 重试机制
           if (totalFailureCount >= maxFetchFailures) {
             // Give up trying anymore locations. Either we've tried all of the original locations,
             // or we've refreshed the list of locations from the master, and have still
@@ -805,6 +812,8 @@ private[spark] class BlockManager(
   }
 
   /**
+    *
+    * 从blockmanager读取数据
    * Get a block from the block manager (either local or remote).
    *
    * This acquires a read lock on the block if the block was stored locally and does not acquire
@@ -812,11 +821,13 @@ private[spark] class BlockManager(
    * automatically be freed once the result's `data` iterator is fully consumed.
    */
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
+    // 本地读取
     val local = getLocalValues(blockId)
     if (local.isDefined) {
       logInfo(s"Found block $blockId locally")
       return local
     }
+    // 远程读取数据
     val remote = getRemoteValues[T](blockId)
     if (remote.isDefined) {
       logInfo(s"Found block $blockId remotely")
@@ -1210,6 +1221,7 @@ private[spark] class BlockManager(
       if (blockWasSuccessfullyStored) {
         // Now that the block is in either the memory or disk store, tell the master about it.
         info.size = size
+        // 是否需要将block存储状态上报给master
         if (tellMaster && info.tellMaster) {
           reportBlockStatus(blockId, putBlockStatus)
         }

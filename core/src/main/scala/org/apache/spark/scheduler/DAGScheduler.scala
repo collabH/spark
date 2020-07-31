@@ -587,6 +587,7 @@ private[spark] class DAGScheduler(
           // 遍历rdd依赖
           for (dep <- rdd.dependencies) {
             dep match {
+                // 存在shuffle就需要分阶段加入调度
               case shufDep: ShuffleDependency[_, _, _] =>
                 val mapStage = getOrCreateShuffleMapStage(shufDep, stage.firstJobId)
                 if (!mapStage.isAvailable) {
@@ -731,7 +732,7 @@ private[spark] class DAGScheduler(
     assert(partitions.size > 0)
     val func2 = func.asInstanceOf[(TaskContext, Iterator[_]) => _]
     val waiter = new JobWaiter(this, jobId, partitions.size, resultHandler)
-    // 将JobSubmitted放入event队列
+    // 将JobSubmitted放入event队列，actor模式
     eventProcessLoop.post(JobSubmitted(
       jobId, rdd, func2, partitions.toArray, callSite, waiter,
       SerializationUtils.clone(properties)))
@@ -741,7 +742,7 @@ private[spark] class DAGScheduler(
   /**
    * Run an action job on the given RDD and pass all the results to the resultHandler function as
    * they arrive.
-   *
+   *  Job调度
    * @param rdd target RDD to run tasks on
    * @param func a function to run on each partition of the RDD
    * @param partitions set of partitions to run on; some jobs may not want to compute on all
@@ -986,7 +987,7 @@ private[spark] class DAGScheduler(
   }
 
   /**
-    * JobSubmitted事件
+    * JobSubmitted事件，处理提交的JOB
     * @param jobId
     * @param finalRDD
     * @param func
@@ -1018,6 +1019,7 @@ private[spark] class DAGScheduler(
             override def apply(key: Int, value: Int): Int = value + 1
           })
         if (numCheckFailures <= maxFailureNumTasksCheck) {
+          // 重试机制
           messageScheduler.schedule(
             new Runnable {
               override def run(): Unit = eventProcessLoop.post(JobSubmitted(jobId, finalRDD, func,
@@ -1125,8 +1127,10 @@ private[spark] class DAGScheduler(
         if (missing.isEmpty) {
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
 
+          // 将stage转换为taskSet
           submitMissingTasks(stage, jobId.get)
         } else {
+          // 存在父亲先调度父亲，然后遍历是否还有父亲，广度优先遍历，从子节点一直找父亲
           for (parent <- missing) {
             submitStage(parent)
           }
@@ -1142,7 +1146,7 @@ private[spark] class DAGScheduler(
   private def submitMissingTasks(stage: Stage, jobId: Int) {
     logDebug("submitMissingTasks(" + stage + ")")
 
-    // First figure out the indexes of partition ids to compute.
+    // First figure out the indexes of partition ids to compute. 分区区间
     val partitionsToCompute: Seq[Int] = stage.findMissingPartitions()
 
     // Use the scheduling pool, job group, description, etc. from an ActiveJob associated
@@ -1161,6 +1165,7 @@ private[spark] class DAGScheduler(
         outputCommitCoordinator.stageStart(
           stage = s.id, maxPartitionId = s.rdd.partitions.length - 1)
     }
+    // 计算本地化
     val taskIdToLocations: Map[Int, Seq[TaskLocation]] = try {
       stage match {
         case s: ShuffleMapStage =>
@@ -1188,6 +1193,7 @@ private[spark] class DAGScheduler(
     if (partitionsToCompute.nonEmpty) {
       stage.latestInfo.submissionTime = Some(clock.getTimeMillis())
     }
+    // 提交Stage
     listenerBus.post(SparkListenerStageSubmitted(stage.latestInfo, properties))
 
     // TODO: Maybe we can keep the taskBinary in Stage to avoid serializing it multiple times.
@@ -1196,6 +1202,7 @@ private[spark] class DAGScheduler(
     // task gets a different copy of the RDD. This provides stronger isolation between tasks that
     // might modify state of objects referenced in their closures. This is necessary in Hadoop
     // where the JobConf/Configuration object is not thread-safe.
+    // 广播
     var taskBinary: Broadcast[Array[Byte]] = null
     var partitions: Array[Partition] = null
     try {
@@ -1216,7 +1223,7 @@ private[spark] class DAGScheduler(
 
         partitions = stage.rdd.partitions
       }
-
+      // 将task数据广播
       taskBinary = sc.broadcast(taskBinaryBytes)
     } catch {
       // In the case of a failure during serialization, abort the stage.
@@ -1234,6 +1241,7 @@ private[spark] class DAGScheduler(
         return
     }
 
+    // 将stage转换成对应的TaskSet
     val tasks: Seq[Task[_]] = try {
       val serializedTaskMetrics = closureSerializer.serialize(stage.latestInfo.taskMetrics).array()
       stage match {
@@ -2060,11 +2068,13 @@ private[spark] class DAGScheduler(
       return Nil
     }
     // If the partition is cached, return the cache locations
+    // 如果分区缓存了直接拿到缓存
     val cached = getCacheLocs(rdd)(partition)
     if (cached.nonEmpty) {
       return cached
     }
     // If the RDD has some placement preferences (as is the case for input RDDs), get those
+    // 数据本地化
     val rddPrefs = rdd.preferredLocations(rdd.partitions(partition)).toList
     if (rddPrefs.nonEmpty) {
       return rddPrefs.map(TaskLocation(_))

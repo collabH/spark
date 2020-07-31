@@ -27,6 +27,7 @@ import org.apache.spark.shuffle.ShuffleHandle
 /**
  * :: DeveloperApi ::
  * Base class for dependencies.
+  * RDD依赖
  */
 @DeveloperApi
 abstract class Dependency[T] extends Serializable {
