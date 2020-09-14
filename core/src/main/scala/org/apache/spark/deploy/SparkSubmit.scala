@@ -63,6 +63,7 @@ private[deploy] object SparkSubmitAction extends Enumeration {
 }
 
 /**
+ * spark-submit 命令实现类
  * Main gateway of launching a Spark application.
  *
  * This program handles setting up the classpath with relevant Spark dependencies and provides

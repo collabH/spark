@@ -1062,8 +1062,10 @@ private[spark] class DAGScheduler(
     // 向finalStage设置setActiveJob
     finalStage.setActiveJob(job)
     val stageIds = jobIdToStageIds(jobId).toArray
+    // 获取stage详情
     val stageInfos = stageIds.flatMap(id => stageIdToStage.get(id).map(_.latestInfo))
     listenerBus.post(
+      // 监听任务开始
       SparkListenerJobStart(job.jobId, jobSubmissionTime, stageInfos, properties))
     // 提交Stage
     submitStage(finalStage)
@@ -1123,7 +1125,7 @@ private[spark] class DAGScheduler(
         // 得到丢失的Parent stage
         val missing: List[Stage] = getMissingParentStages(stage).sortBy(_.id)
         logDebug("missing: " + missing)
-        // 如果为null
+        // 如果为null，不存在parent stage
         if (missing.isEmpty) {
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
 
@@ -1151,7 +1153,7 @@ private[spark] class DAGScheduler(
 
     // Use the scheduling pool, job group, description, etc. from an ActiveJob associated
     // with this Stage
-    val properties = jobIdToActiveJob(jobId).properties
+    val properties: Properties = jobIdToActiveJob(jobId).properties
 
     runningStages += stage
     // SparkListenerStageSubmitted should be posted before testing whether tasks are
@@ -2137,6 +2139,10 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
     }
   }
 
+  /**
+    * 处理DAGSchedulerEvent
+    * @param event
+    */
   private def doOnReceive(event: DAGSchedulerEvent): Unit = event match {
       // 模式匹配来处理不同的DAG事件
     case JobSubmitted(jobId, rdd, func, partitions, callSite, listener, properties) =>

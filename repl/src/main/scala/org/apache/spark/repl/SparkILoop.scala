@@ -20,26 +20,24 @@ package org.apache.spark.repl
 import java.io.BufferedReader
 
 // scalastyle:off println
-import scala.Predef.{println => _, _}
+import scala.Predef.{println => _}
 // scalastyle:on println
 import scala.concurrent.Future
 import scala.reflect.classTag
 import scala.reflect.io.File
-import scala.tools.nsc.{GenericRunnerSettings, Properties}
-import scala.tools.nsc.Settings
-import scala.tools.nsc.interpreter.{isReplDebug, isReplPower, replProps}
-import scala.tools.nsc.interpreter.{AbstractOrMissingHandler, ILoop, IMain, JPrintWriter}
-import scala.tools.nsc.interpreter.{NamedParam, SimpleReader, SplashLoop, SplashReader}
 import scala.tools.nsc.interpreter.StdReplTags.tagOfIMain
+import scala.tools.nsc.interpreter.{AbstractOrMissingHandler, ILoop, IMain, JPrintWriter, NamedParam, SimpleReader, SplashLoop, SplashReader, isReplDebug, isReplPower, replProps}
 import scala.tools.nsc.util.stringFromStream
+import scala.tools.nsc.{GenericRunnerSettings, Properties, Settings}
 import scala.util.Properties.{javaVersion, javaVmName, versionNumberString, versionString}
 
 /**
- *  A Spark-specific interactive shell.
+ * A Spark-specific interactive shell.
  */
 class SparkILoop(in0: Option[BufferedReader], out: JPrintWriter)
-    extends ILoop(in0, out) {
+  extends ILoop(in0, out) {
   def this(in0: BufferedReader, out: JPrintWriter) = this(Some(in0), out)
+
   def this() = this(None, new JPrintWriter(Console.out, true))
 
   /**
@@ -102,6 +100,9 @@ class SparkILoop(in0: Option[BufferedReader], out: JPrintWriter)
     "import org.apache.spark.sql.functions._"
   )
 
+  /**
+   * 初始化Spark
+   */
   def initializeSpark(): Unit = {
     if (!intp.reporter.hasErrors) {
       // `savingReplayStack` removes the commands from session history.
@@ -117,7 +118,8 @@ class SparkILoop(in0: Option[BufferedReader], out: JPrintWriter)
   /** Print a welcome message */
   override def printWelcome() {
     import org.apache.spark.SPARK_VERSION
-    echo("""Welcome to
+    echo(
+      """Welcome to
       ____              __
      / __/__  ___ _____/ /__
     _\ \/ _ \/ _ `/ __/  '_/
@@ -202,7 +204,7 @@ class SparkILoop(in0: Option[BufferedReader], out: JPrintWriter)
       intp.quietBind(NamedParam[IMain]("$intp", intp)(tagOfIMain, classTag[IMain]))
 
       // Auto-run code via some setting.
-      ( replProps.replAutorunCode.option
+      (replProps.replAutorunCode.option
         flatMap (f => File(f).safeSlurp())
         foreach (intp quietRun _)
         )
@@ -213,6 +215,7 @@ class SparkILoop(in0: Option[BufferedReader], out: JPrintWriter)
       // SI-7418 Now, and only now, can we enable TAB completion.
       in.postInit()
     }
+
     def loadInitFiles(): Unit = settings match {
       case settings: GenericRunnerSettings =>
         for (f <- settings.loadfiles.value) {
@@ -225,6 +228,7 @@ class SparkILoop(in0: Option[BufferedReader], out: JPrintWriter)
         }
       case _ =>
     }
+
     // wait until after startup to enable noisy settings
     def withSuppressedSettings[A](body: => A): A = {
       val ss = this.settings
@@ -244,6 +248,7 @@ class SparkILoop(in0: Option[BufferedReader], out: JPrintWriter)
         }
       }
     }
+
     def startup(): String = withSuppressedSettings {
       // let them start typing
       val splash = preLoop
@@ -268,8 +273,8 @@ class SparkILoop(in0: Option[BufferedReader], out: JPrintWriter)
           printWelcome()
           splash.start()
 
-          val line = splash.line           // what they typed in while they were waiting
-          if (line == null) {              // they ^D
+          val line = splash.line // what they typed in while they were waiting
+          if (line == null) { // they ^D
             try out print Properties.shellInterruptedString
             finally closeInterpreter()
           }
@@ -300,7 +305,7 @@ object SparkILoop {
    * the given code to it as input.
    */
   def run(code: String, sets: Settings = new Settings): String = {
-    import java.io.{ BufferedReader, StringReader, OutputStreamWriter }
+    import java.io.{BufferedReader, OutputStreamWriter, StringReader}
 
     stringFromStream { ostream =>
       Console.withOut(ostream) {
@@ -315,5 +320,6 @@ object SparkILoop {
       }
     }
   }
+
   def run(lines: List[String]): String = run(lines.map(_ + "\n").mkString)
 }

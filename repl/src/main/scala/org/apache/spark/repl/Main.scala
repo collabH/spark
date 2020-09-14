@@ -21,14 +21,17 @@ import java.io.File
 import java.net.URI
 import java.util.Locale
 
-import scala.tools.nsc.GenericRunnerSettings
-
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.internal.StaticSQLConf.CATALOG_IMPLEMENTATION
 import org.apache.spark.util.Utils
 
+import scala.tools.nsc.GenericRunnerSettings
+
+/**
+ * Spark-shell spark-submit提交的主类
+ */
 object Main extends Logging {
 
   initializeLogIfNecessary(true)
@@ -96,8 +99,9 @@ object Main extends Logging {
       if (System.getenv("SPARK_HOME") != null) {
         conf.setSparkHome(System.getenv("SPARK_HOME"))
       }
-
+      // build spark-session
       val builder = SparkSession.builder.config(conf)
+      // 判断是否使用hive catalog
       if (conf.get(CATALOG_IMPLEMENTATION.key, "hive").toLowerCase(Locale.ROOT) == "hive") {
         if (SparkSession.hiveClassesArePresent) {
           // In the case that the property is not set at all, builder's config

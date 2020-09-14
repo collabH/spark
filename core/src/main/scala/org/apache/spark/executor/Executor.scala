@@ -210,6 +210,7 @@ private[spark] class Executor(
     val tr = new TaskRunner(context, taskDescription)
     // 任务id添加进runningTasks集合
     runningTasks.put(taskDescription.taskId, tr)
+    // 线程池异步执行task
     threadPool.execute(tr)
   }
 

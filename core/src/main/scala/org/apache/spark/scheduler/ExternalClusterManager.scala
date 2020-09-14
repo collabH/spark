@@ -21,6 +21,7 @@ import org.apache.spark.SparkContext
 
 /**
  * A cluster manager interface to plugin external scheduler.
+ * 一个集群管理器接口作用域外部调度插件
  */
 private[spark] trait ExternalClusterManager {
 

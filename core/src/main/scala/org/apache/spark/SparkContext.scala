@@ -76,8 +76,9 @@ class SparkContext(config: SparkConf) extends Logging {
   private val creationSite: CallSite = Utils.getCallSite()
 
   // If true, log warnings instead of throwing exceptions when multiple SparkContexts are active
+  // 是否运行多个SparkContext
   private val allowMultipleContexts: Boolean =
-    config.getBoolean("spark.driver.allowMultipleContexts", false)
+    config.getBoolean("spark.driver.allowMultipleContexts", defaultValue = false)
 
   // In order to prevent multiple SparkContexts from being active at the same time, mark this
   // context as having started construction.
@@ -86,12 +87,13 @@ class SparkContext(config: SparkConf) extends Logging {
 
   val startTime = System.currentTimeMillis()
 
+  // 使用原子变量
   private[spark] val stopped: AtomicBoolean = new AtomicBoolean(false)
 
   private[spark] def assertNotStopped(): Unit = {
     if (stopped.get()) {
       val activeContext = SparkContext.activeContext.get()
-      val activeCreationSite =
+      val activeCreationSite: String =
         if (activeContext == null) {
           "(No active SparkContext.)"
         } else {
@@ -229,7 +231,9 @@ class SparkContext(config: SparkConf) extends Logging {
 
   def jars: Seq[String] = _jars
   def files: Seq[String] = _files
+  // master配置
   def master: String = _conf.get("spark.master")
+  // 部署模式，默认client模式
   def deployMode: String = _conf.getOption("spark.submit.deployMode").getOrElse("client")
   def appName: String = _conf.get("spark.app.name")
 
@@ -260,18 +264,23 @@ class SparkContext(config: SparkConf) extends Logging {
   private[spark] def env: SparkEnv = _env
 
   // Used to store a URL for each static file/jar together with the file's local timestamp
+  // 存储静态file文件
   private[spark] val addedFiles = new ConcurrentHashMap[String, Long]().asScala
+  // 存储静态jar包
   private[spark] val addedJars = new ConcurrentHashMap[String, Long]().asScala
 
   // Keeps track of all persisted RDDs
+  // 持久化的RDD，弱引用
   private[spark] val persistentRdds = {
     val map: ConcurrentMap[Int, RDD[_]] = new MapMaker().weakValues().makeMap[Int, RDD[_]]()
     map.asScala
   }
+  // spark状态追踪器
   def statusTracker: SparkStatusTracker = _statusTracker
 
   private[spark] def progressBar: Option[ConsoleProgressBar] = _progressBar
 
+  // spark UI
   private[spark] def ui: Option[SparkUI] = _ui
 
   def uiWebUrl: Option[String] = _ui.map(_.webUrl)
@@ -361,6 +370,7 @@ class SparkContext(config: SparkConf) extends Logging {
   }
 
   try {
+    // 校验参数
     _conf = config.clone()
     _conf.validateSettings()
 
@@ -395,6 +405,7 @@ class SparkContext(config: SparkConf) extends Logging {
     _files = _conf.getOption("spark.files").map(_.split(",")).map(_.filter(_.nonEmpty))
       .toSeq.flatten
 
+    // event log配置
     _eventLogDir =
       if (isEventLogEnabled) {
         val unresolvedDir = conf.get("spark.eventLog.dir", EventLoggingListener.DEFAULT_LOG_DIR)
@@ -462,6 +473,7 @@ class SparkContext(config: SparkConf) extends Logging {
       files.foreach(addFile)
     }
 
+    // 默认1g
     _executorMemory = _conf.getOption("spark.executor.memory")
       .orElse(Option(System.getenv("SPARK_EXECUTOR_MEMORY")))
       .orElse(Option(System.getenv("SPARK_MEM"))

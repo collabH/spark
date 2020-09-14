@@ -28,6 +28,7 @@ import static org.apache.spark.launcher.CommandBuilderUtils.*;
 
 /**
  * Command line interface for the Spark launcher. Used internally by Spark scripts.
+ * 命令行接口用于SPark执行期，由Spark脚本内部使用
  */
 class Main {
 
@@ -57,9 +58,12 @@ class Main {
     boolean printLaunchCommand = !isEmpty(System.getenv("SPARK_PRINT_LAUNCH_COMMAND"));
     Map<String, String> env = new HashMap<>();
     List<String> cmd;
+    // 如果是sparkSubmit
     if (className.equals("org.apache.spark.deploy.SparkSubmit")) {
       try {
+        // 构造sparkSubmit构造起
         AbstractCommandBuilder builder = new SparkSubmitCommandBuilder(args);
+        // 构造cmd
         cmd = buildCommand(builder, env, printLaunchCommand);
       } catch (IllegalArgumentException e) {
         printLaunchCommand = false;
