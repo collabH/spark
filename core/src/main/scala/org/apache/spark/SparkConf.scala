@@ -57,8 +57,14 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
   /** Create a SparkConf that loads defaults from system properties and the classpath */
   def this() = this(true)
 
+  /**
+   *  存储spark配置
+   */
   private val settings = new ConcurrentHashMap[String, String]()
 
+  /**
+   *  出根据配置创建ConfigReader
+   */
   @transient private lazy val reader: ConfigReader = {
     val _reader = new ConfigReader(new SparkConfigProvider(settings))
     _reader.bindEnv(new ConfigProvider {
@@ -67,6 +73,7 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
     _reader
   }
 
+  // 如果loadDefault为true从系统属性中加载配置
   if (loadDefaults) {
     loadFromSystemProperties(false)
   }
@@ -84,6 +91,13 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
     set(key, value, false)
   }
 
+  /**
+   * 设置配置只settings中，如果key存在则覆盖
+   * @param key
+   * @param value
+   * @param silent
+   * @return
+   */
   private[spark] def set(key: String, value: String, silent: Boolean): SparkConf = {
     if (key == null) {
       throw new NullPointerException("null key")
@@ -91,6 +105,7 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
     if (value == null) {
       throw new NullPointerException("null value for " + key)
     }
+    // 是否打印过期配置警告
     if (!silent) {
       logDeprecationWarning(key)
     }
@@ -459,9 +474,12 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging with Seria
 
   private[spark] def contains(entry: ConfigEntry[_]): Boolean = contains(entry.key)
 
-  /** Copy this object */
+  /** Copy this object
+   * 克隆sparkConf
+   **/
   override def clone: SparkConf = {
     val cloned = new SparkConf(false)
+    // 实际上是foreach map中全部的key value塞进新的sparkConf对象中
     settings.entrySet().asScala.foreach { e =>
       cloned.set(e.getKey(), e.getValue(), true)
     }
@@ -777,6 +795,7 @@ private[spark] object SparkConf extends Logging {
   }
 
   /**
+   * 打印过期配置警告
    * Logs a warning message if the given config key is deprecated.
    */
   def logDeprecationWarning(key: String): Unit = {
