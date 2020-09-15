@@ -28,11 +28,21 @@ import org.apache.spark.util.RpcUtils
 
 
 /**
+ * 一个RpcEnvFactory的实现
  * A RpcEnv implementation must have a [[RpcEnvFactory]] implementation with an empty constructor
  * so that it can be created via Reflection.
  */
 private[spark] object RpcEnv {
 
+  /**
+   * @param name rpcEnv名称
+   * @param host host
+   * @param port 端口
+   * @param conf sprak配置
+   * @param securityManager 安全管理器
+   * @param clientMode 是否客户端模式
+   * @return
+   */
   def create(
       name: String,
       host: String,
@@ -54,6 +64,7 @@ private[spark] object RpcEnv {
       clientMode: Boolean): RpcEnv = {
     val config = RpcEnvConfig(conf, name, bindAddress, advertiseAddress, port, securityManager,
       numUsableCores, clientMode)
+    // 使用NettyRpcEnvFactory创建RpcEnv
     new NettyRpcEnvFactory().create(config)
   }
 }
@@ -73,6 +84,7 @@ private[spark] abstract class RpcEnv(conf: SparkConf) {
   private[spark] val defaultLookupTimeout = RpcUtils.lookupRpcTimeout(conf)
 
   /**
+   * 返回这个被注册的RpcEndpointRef 它实现RpcEndpoint
    * Return RpcEndpointRef of the registered [[RpcEndpoint]]. Will be used to implement
    * [[RpcEndpoint.self]]. Return `null` if the corresponding [[RpcEndpointRef]] does not exist.
    */
@@ -167,6 +179,7 @@ private[spark] trait RpcEnvFileServer {
   def addFile(file: File): String
 
   /**
+   * 添加jar到rpcEnv中，类似于addFile
    * Adds a jar to be served by this RpcEnv. Similar to `addFile` but for jars added using
    * `SparkContext.addJar`.
    *
@@ -195,6 +208,17 @@ private[spark] trait RpcEnvFileServer {
 
 }
 
+/**
+ * Rpc环境配置
+ * @param conf
+ * @param name
+ * @param bindAddress
+ * @param advertiseAddress
+ * @param port
+ * @param securityManager
+ * @param numUsableCores
+ * @param clientMode
+ */
 private[spark] case class RpcEnvConfig(
     conf: SparkConf,
     name: String,

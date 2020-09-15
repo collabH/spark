@@ -19,23 +19,33 @@ package org.apache.spark.rpc.netty
 
 import java.nio.ByteBuffer
 import java.util.concurrent.Callable
+
 import javax.annotation.concurrent.GuardedBy
-
-import scala.util.control.NonFatal
-
 import org.apache.spark.SparkException
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.client.{RpcResponseCallback, TransportClient}
 import org.apache.spark.rpc.{RpcAddress, RpcEnvStoppedException}
 
+import scala.util.control.NonFatal
+
 private[netty] sealed trait OutboxMessage {
 
+  /**
+   * 通过传输层客户端发送消息
+   *
+   * @param client
+   */
   def sendWith(client: TransportClient): Unit
 
   def onFailure(e: Throwable): Unit
 
 }
 
+/**
+ * OnwWay方式outbox消息
+ *
+ * @param content
+ */
 private[netty] case class OneWayOutboxMessage(content: ByteBuffer) extends OutboxMessage
   with Logging {
 
@@ -52,10 +62,17 @@ private[netty] case class OneWayOutboxMessage(content: ByteBuffer) extends Outbo
 
 }
 
+/**
+ * rpc outbox消息
+ *
+ * @param content
+ * @param _onFailure
+ * @param _onSuccess
+ */
 private[netty] case class RpcOutboxMessage(
-    content: ByteBuffer,
-    _onFailure: (Throwable) => Unit,
-    _onSuccess: (TransportClient, ByteBuffer) => Unit)
+                                            content: ByteBuffer,
+                                            _onFailure: (Throwable) => Unit,
+                                            _onSuccess: (TransportClient, ByteBuffer) => Unit)
   extends OutboxMessage with RpcResponseCallback with Logging {
 
   private var client: TransportClient = _
@@ -124,6 +141,7 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
         false
       }
     }
+    // 如果连接关闭连
     if (dropped) {
       message.onFailure(new SparkException("Message is dropped because Outbox is stopped"))
     } else {
@@ -156,7 +174,7 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
         // There is some thread draining, so just exit
         return
       }
-      // 拿到第一条消息
+      // 拿到第一条消息，从内存中拿消息
       message = messages.poll()
       if (message == null) {
         return
@@ -166,7 +184,9 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
     }
     while (true) {
       try {
-        val _client = synchronized { client }
+        val _client = synchronized {
+          client
+        }
         if (_client != null) {
           // 发送消息
           message.sendWith(_client)
@@ -182,6 +202,7 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
         if (stopped) {
           return
         }
+        // 退出条件，判断内存消息是否发送完毕
         message = messages.poll()
         if (message == null) {
           draining = false
@@ -191,12 +212,19 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
     }
   }
 
+  /**
+   * 启动连接task
+   */
   private def launchConnectTask(): Unit = {
+    /**
+     * 通过netty的客户端连接线程池创建连接
+     */
     connectFuture = nettyEnv.clientConnectionExecutor.submit(new Callable[Unit] {
 
       override def call(): Unit = {
         try {
-          val _client = nettyEnv.createClient(address)
+          // 创建传输客户端，核心逻辑是不同的传输层客户端有自己的锁
+          val _client: TransportClient = nettyEnv.createClient(address)
           outbox.synchronized {
             client = _client
             if (stopped) {
@@ -208,11 +236,15 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
             // exit
             return
           case NonFatal(e) =>
-            outbox.synchronized { connectFuture = null }
+            outbox.synchronized {
+              connectFuture = null
+            }
             handleNetworkFailure(e)
             return
         }
-        outbox.synchronized { connectFuture = null }
+        outbox.synchronized {
+          connectFuture = null
+        }
         // It's possible that no thread is draining now. If we don't drain here, we cannot send the
         // messages until the next message arrives.
         drainOutbox()

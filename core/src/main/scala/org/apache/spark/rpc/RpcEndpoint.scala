@@ -20,11 +20,17 @@ package org.apache.spark.rpc
 import org.apache.spark.SparkException
 
 /**
+ * 一个工厂类来创建RpcEnv 。 它必须有一个空的构造，以便它可以使用反射来创建。
  * A factory class to create the [[RpcEnv]]. It must have an empty constructor so that it can be
  * created using Reflection.
  */
 private[spark] trait RpcEnvFactory {
 
+  /**
+   * 根据rpc环境配置创建rpcEnv
+   * @param config
+   * @return
+   */
   def create(config: RpcEnvConfig): RpcEnv
 }
 

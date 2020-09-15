@@ -22,6 +22,7 @@ import org.apache.spark.util.Utils
 
 /**
  * Address for an RPC environment, with hostname and port.
+ * 一个rpc环境，包含hostname和port
  */
 private[spark] case class RpcAddress(host: String, port: Int) {
 

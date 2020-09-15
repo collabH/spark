@@ -89,6 +89,7 @@ private[spark] abstract class RpcEndpointRef(conf: SparkConf)
    * @return the reply message from the corresponding [[RpcEndpoint]]
    */
   def askSync[T: ClassTag](message: Any, timeout: RpcTimeout): T = {
+    // 同步ask
     val future = ask[T](message, timeout)
     timeout.awaitResult(future)
   }

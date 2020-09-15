@@ -21,13 +21,14 @@ import org.apache.spark.SparkException
 
 /**
  * An address identifier for an RPC endpoint.
+ * 一个RPC端点定义的一个地址
  *
  * The `rpcAddress` may be null, in which case the endpoint is registered via a client-only
  * connection and can only be reached via the client that sent the endpoint reference.
  *
  * @param rpcAddress The socket address of the endpoint. It's `null` when this address pointing to
  *                   an endpoint in a client `NettyRpcEnv`.
- * @param name Name of the endpoint.
+ * @param name       Name of the endpoint.
  */
 private[spark] case class RpcEndpointAddress(rpcAddress: RpcAddress, name: String) {
 
@@ -38,12 +39,15 @@ private[spark] case class RpcEndpointAddress(rpcAddress: RpcAddress, name: Strin
   }
 
   override val toString = if (rpcAddress != null) {
-      s"spark://$name@${rpcAddress.host}:${rpcAddress.port}"
-    } else {
-      s"spark-client://$name"
-    }
+    s"spark://$name@${rpcAddress.host}:${rpcAddress.port}"
+  } else {
+    s"spark-client://$name"
+  }
 }
 
+/**
+ * 创建RpcEndpointAddress
+ */
 private[spark] object RpcEndpointAddress {
 
   def apply(host: String, port: Int, name: String): RpcEndpointAddress = {
@@ -57,12 +61,12 @@ private[spark] object RpcEndpointAddress {
       val port = uri.getPort
       val name = uri.getUserInfo
       if (uri.getScheme != "spark" ||
-          host == null ||
-          port < 0 ||
-          name == null ||
-          (uri.getPath != null && !uri.getPath.isEmpty) || // uri.getPath returns "" instead of null
-          uri.getFragment != null ||
-          uri.getQuery != null) {
+        host == null ||
+        port < 0 ||
+        name == null ||
+        (uri.getPath != null && !uri.getPath.isEmpty) || // uri.getPath returns "" instead of null
+        uri.getFragment != null ||
+        uri.getQuery != null) {
         throw new SparkException("Invalid Spark URL: " + sparkUrl)
       }
       new RpcEndpointAddress(host, port, name)
