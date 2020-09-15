@@ -20,6 +20,7 @@ package org.apache.spark.network.client;
 import io.netty.channel.Channel;
 
 /**
+ * 主要对连接建立时进行一些初始化准备（验证，加密等）。
  * A bootstrap which is executed on a TransportClient before it is returned to the user.
  * This enables an initial exchange of information (e.g., SASL authentication tokens) on a once-per-
  * connection basis.

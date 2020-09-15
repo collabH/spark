@@ -72,7 +72,9 @@ import static org.apache.spark.network.util.NettyUtils.getRemoteAddress;
 public class TransportClient implements Closeable {
   private static final Logger logger = LoggerFactory.getLogger(TransportClient.class);
 
+  // channel
   private final Channel channel;
+  // 传输层响应处理器
   private final TransportResponseHandler handler;
   @Nullable private String clientId;
   private volatile boolean timedOut;

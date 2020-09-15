@@ -165,10 +165,14 @@ public class TransportContext {
    * properties (such as the remoteAddress()) may not be available yet.
    */
   private TransportChannelHandler createChannelHandler(Channel channel, RpcHandler rpcHandler) {
+    // 创建TransportResponseHandler
     TransportResponseHandler responseHandler = new TransportResponseHandler(channel);
+    // 穿件TransportClient
     TransportClient client = new TransportClient(channel, responseHandler);
+    // 创建TransportRequestHandler
     TransportRequestHandler requestHandler = new TransportRequestHandler(channel, client,
       rpcHandler, conf.maxChunksBeingTransferred());
+    // 放入TransportChannelHandler中
     return new TransportChannelHandler(client, responseHandler, requestHandler,
       conf.connectionTimeoutMs(), closeIdleConnections);
   }

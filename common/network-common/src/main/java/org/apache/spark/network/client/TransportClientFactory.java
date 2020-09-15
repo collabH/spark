@@ -155,6 +155,7 @@ public class TransportClientFactory implements Closeable {
             clientPool = connectionPool.get(unresolvedAddress);
         }
 
+        // 根据连接数随机选择一个客户端
         int clientIndex = rand.nextInt(numConnectionsPerPeer);
         TransportClient cachedClient = clientPool.clients[clientIndex];
         //  校验换成的传输客户端是否生效
@@ -164,6 +165,7 @@ public class TransportClientFactory implements Closeable {
             // this code was able to update things.
             TransportChannelHandler handler = cachedClient.getChannel().pipeline()
                     .get(TransportChannelHandler.class);
+            // 修改最后一次请求的时间
             synchronized (handler) {
                 handler.getResponseHandler().updateTimeOfLastRequest();
             }
@@ -216,13 +218,16 @@ public class TransportClientFactory implements Closeable {
     }
 
     /**
+     * 常见一个新的TransportClient
      * Create a completely new {@link TransportClient} to the remote address.
      */
     private TransportClient createClient(InetSocketAddress address)
             throws IOException, InterruptedException {
         logger.debug("Creating new connection to {}", address);
 
+        // 创建传输层引导程序Bootstrap，netty
         Bootstrap bootstrap = new Bootstrap();
+        // 设置工作组，socket channel，其他参数
         bootstrap.group(workerGroup)
                 .channel(socketChannelClass)
                 // Disable Nagle's Algorithm since we don't want packets to wait
@@ -251,16 +256,19 @@ public class TransportClientFactory implements Closeable {
             }
         });
 
-        // Connect to the remote server
+        // Connect to the remote server 连接到远程服务器
         long preConnect = System.nanoTime();
         ChannelFuture cf = bootstrap.connect(address);
+        // 超时判断
         if (!cf.await(conf.connectionTimeoutMs())) {
             throw new IOException(
                     String.format("Connecting to %s timed out (%s ms)", address, conf.connectionTimeoutMs()));
+            // 连接异常判断
         } else if (cf.cause() != null) {
             throw new IOException(String.format("Failed to connect to %s", address), cf.cause());
         }
 
+        // 获取传输层客户端
         TransportClient client = clientRef.get();
         Channel channel = channelRef.get();
         assert client != null : "Channel future completed successfully with null client";
@@ -269,6 +277,7 @@ public class TransportClientFactory implements Closeable {
         long preBootstrap = System.nanoTime();
         logger.debug("Connection to {} successful, running bootstraps...", address);
         try {
+            // 给传输层客户端设置客户端引导程序，权限、安全相关
             for (TransportClientBootstrap clientBootstrap : clientBootstraps) {
                 clientBootstrap.doBootstrap(client, channel);
             }

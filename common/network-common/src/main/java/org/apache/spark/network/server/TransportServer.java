@@ -41,18 +41,23 @@ import org.apache.spark.network.util.*;
 
 /**
  * Server for the efficient, low-level streaming service.
+ * 提供高效、最低级别的流服务
  */
 public class TransportServer implements Closeable {
   private static final Logger logger = LoggerFactory.getLogger(TransportServer.class);
-
+  // 传输层上下文包含RPC处理器，编解码器
   private final TransportContext context;
+  // 传输层配置
   private final TransportConf conf;
   private final RpcHandler appRpcHandler;
+  // 引导程序包含权限、安全等
   private final List<TransportServerBootstrap> bootstraps;
 
+  // netty提供的ServerBootstrap
   private ServerBootstrap bootstrap;
   private ChannelFuture channelFuture;
   private int port = -1;
+  // 指标收集器
   private NettyMemoryMetrics metrics;
 
   /**
@@ -68,10 +73,13 @@ public class TransportServer implements Closeable {
     this.context = context;
     this.conf = context.getConf();
     this.appRpcHandler = appRpcHandler;
-    this.bootstraps = Lists.newArrayList(Preconditions.checkNotNull(bootstraps));
+    // todo 去掉没必要的代码
+    this.bootstraps = Preconditions.checkNotNull(bootstraps);
 
+    // 是否需要关闭
     boolean shouldClose = true;
     try {
+      // 初始化hostToBind，portBind
       init(hostToBind, portToBind);
       shouldClose = false;
     } finally {
@@ -88,17 +96,27 @@ public class TransportServer implements Closeable {
     return port;
   }
 
+  /**
+   * 初始化netty所需环境
+   * @param hostToBind
+   * @param portToBind
+   */
   private void init(String hostToBind, int portToBind) {
 
+    // 选择IO模型，默认为NIO
     IOMode ioMode = IOMode.valueOf(conf.ioMode());
+    // 创建bossGroup
     EventLoopGroup bossGroup = NettyUtils.createEventLoop(ioMode, 1,
       conf.getModuleName() + "-boss");
+    // 创建workerGroup
     EventLoopGroup workerGroup =  NettyUtils.createEventLoop(ioMode, conf.serverThreads(),
       conf.getModuleName() + "-server");
 
+    // 穿线byte申请器
     PooledByteBufAllocator allocator = NettyUtils.createPooledByteBufAllocator(
       conf.preferDirectBufs(), true /* allowCache */, conf.serverThreads());
 
+    // 创建netty serverbootstrap
     bootstrap = new ServerBootstrap()
       .group(bossGroup, workerGroup)
       .channel(NettyUtils.getServerChannelClass(ioMode))
@@ -106,9 +124,11 @@ public class TransportServer implements Closeable {
       .option(ChannelOption.SO_REUSEADDR, !SystemUtils.IS_OS_WINDOWS)
       .childOption(ChannelOption.ALLOCATOR, allocator);
 
+    //创建netty内存指标
     this.metrics = new NettyMemoryMetrics(
       allocator, conf.getModuleName() + "-server", conf);
 
+    // 设置netty所需网络参数
     if (conf.backLog() > 0) {
       bootstrap.option(ChannelOption.SO_BACKLOG, conf.backLog());
     }
@@ -125,6 +145,7 @@ public class TransportServer implements Closeable {
       @Override
       protected void initChannel(SocketChannel ch) {
         RpcHandler rpcHandler = appRpcHandler;
+        // 为SocketChannel、rpcHandler分配引导程序
         for (TransportServerBootstrap bootstrap : bootstraps) {
           rpcHandler = bootstrap.doBootstrap(ch, rpcHandler);
         }
@@ -134,6 +155,7 @@ public class TransportServer implements Closeable {
 
     InetSocketAddress address = hostToBind == null ?
         new InetSocketAddress(portToBind): new InetSocketAddress(hostToBind, portToBind);
+    // 绑定客户端地址
     channelFuture = bootstrap.bind(address);
     channelFuture.syncUninterruptibly();
 
