@@ -73,6 +73,9 @@ import org.apache.spark.util._
 class SparkContext(config: SparkConf) extends Logging {
 
   // The call site where this SparkContext was constructed.
+  // 类型为CallSite，其中保存着线程栈中最靠近栈顶的用户定义的类及最靠近栈底的Scala或者Spark核心类信息，
+  // CallSite的shortForm属性保存着以上信息的简短描述，CallSite的longForm属性则保存着以上信息的完整描述。
+  // Spark自带的examples项目中有对单词进行计数的应用例子JavaWordCount，运行JavaWordCount得到的CallSite对象的属性值分别如下。
   private val creationSite: CallSite = Utils.getCallSite()
 
   // If true, log warnings instead of throwing exceptions when multiple SparkContexts are active
@@ -84,7 +87,7 @@ class SparkContext(config: SparkConf) extends Logging {
   // context as having started construction.
   // NOTE: this must be placed at the beginning of the SparkContext constructor.
   SparkContext.markPartiallyConstructed(this, allowMultipleContexts)
-
+  // 开始时间
   val startTime = System.currentTimeMillis()
 
   // 使用原子变量
@@ -190,17 +193,28 @@ class SparkContext(config: SparkConf) extends Logging {
    | of them to some neutral value ahead of time, so that calling "stop()" while the       |
    | constructor is still running is safe.                                                 |
    * ------------------------------------------------------------------------------------- */
-
+  // SparkContext的配置，通过调用SparkConf的clone方法的克隆体。在Spark-Context初始化的过程中会对conf中的配置信息做校验，
+  // 例如，用户必须给自己的应用程序设置spark.master（采用的部署模式）和spark.app.name（用户应用的名称）；用户设置的spark.master属性为yarn时，spark.submit.deployMode属性必须为cluster，且必须设置spark.yarn.app.id属性。
   private var _conf: SparkConf = _
+  // spark-default配置eventLogDir路径
   private var _eventLogDir: Option[URI] = None
+  // 事件日志的压缩算法
   private var _eventLogCodec: Option[String] = None
+  // liveListenerBus事件总线，接受各个使用方的事件，并且异步处理
   private var _listenerBus: LiveListenerBus = _
+  // sparkEnv执行环境，其中包含rpcEnv、blockManager、serilizerManager等
   private var _env: SparkEnv = _
+  // spark各个阶段执行状态监控
   private var _statusTracker: SparkStatusTracker = _
   private var _progressBar: Option[ConsoleProgressBar] = None
+  // SparkUI，将各个组件的信息发送到web ui显示
   private var _ui: Option[SparkUI] = None
+  // Hadoop的配置信息，具体根据Hadoop（Hadoop 2.0之前的版本）和Hadoop YARN（Hadoop2.0+的版本）的环境有所区别。
+  // 如果系统属性SPARK_YARN_MODE为true或者环境变量SPARK_YARN_MODE为true，那么将会是YARN的配置，否则为Hadoop配置。
   private var _hadoopConfiguration: Configuration = _
+  // Executor的内存大小
   private var _executorMemory: Int = _
+  // driver或executor 调度后端
   private var _schedulerBackend: SchedulerBackend = _
   private var _taskScheduler: TaskScheduler = _
   private var _heartbeatReceiver: RpcEndpointRef = _
@@ -208,7 +222,9 @@ class SparkContext(config: SparkConf) extends Logging {
   private var _applicationId: String = _
   private var _applicationAttemptId: Option[String] = None
   private var _eventLogger: Option[EventLoggingListener] = None
+  // 动态executor神奇器，通过参数开启
   private var _executorAllocationManager: Option[ExecutorAllocationManager] = None
+  // 上下文清洗器，用异步方式清理那些超出应用作用域范围的RDD、ShuffleDependency和Broadcast等信息。
   private var _cleaner: Option[ContextCleaner] = None
   private var _listenerBusStarted: Boolean = false
   private var _jars: Seq[String] = _
