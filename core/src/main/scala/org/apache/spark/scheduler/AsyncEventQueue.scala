@@ -46,6 +46,7 @@ private class AsyncEventQueue(
 
   // Cap the capacity of the queue so we get an explicit error (rather than an OOM exception) if
   // it's perpetually being added to more quickly than it's being drained.
+  //
   private val eventQueue = new LinkedBlockingQueue[SparkListenerEvent](
     conf.get(LISTENER_BUS_EVENT_QUEUE_CAPACITY))
 
@@ -77,18 +78,22 @@ private class AsyncEventQueue(
     override def getValue: Int = eventQueue.size()
   })
 
+    // 后台线程，转发器
   private val dispatchThread = new Thread(s"spark-listener-group-$name") {
     setDaemon(true)
     override def run(): Unit = Utils.tryOrStopSparkContext(sc) {
+      // 发送消息
       dispatch()
     }
   }
-
+ // 转发转系
   private def dispatch(): Unit = LiveListenerBus.withinListenerThread.withValue(true) {
     var next: SparkListenerEvent = eventQueue.take()
+    // 不是毒药消息则一致调用postToAll
     while (next != POISON_PILL) {
       val ctx = processingTime.time()
       try {
+        // 遍历消息调用doPostEvent
         super.postToAll(next)
       } finally {
         ctx.stop()
@@ -111,6 +116,7 @@ private class AsyncEventQueue(
   private[scheduler] def start(sc: SparkContext): Unit = {
     if (started.compareAndSet(false, true)) {
       this.sc = sc
+      // 开始dispatchThread线程，发送监听器事件
       dispatchThread.start()
     } else {
       throw new IllegalStateException(s"$name already started!")
@@ -127,11 +133,13 @@ private class AsyncEventQueue(
     }
     if (stopped.compareAndSet(false, true)) {
       eventCount.incrementAndGet()
+      // 发送毒药消息
       eventQueue.put(POISON_PILL)
     }
     // this thread might be trying to stop itself as part of error handling -- we can't join
     // in that case.
     if (Thread.currentThread() != dispatchThread) {
+      // 当先线程不是dispatchThread，就会尝试让dispatchThread die
       dispatchThread.join()
     }
   }
@@ -190,6 +198,10 @@ private class AsyncEventQueue(
     true
   }
 
+  /**
+   * LiveListenerBus的委托类，移除监听器
+   * @param listener
+   */
   override def removeListenerOnError(listener: SparkListenerInterface): Unit = {
     // the listener failed in an unrecoverably way, we want to remove it from the entire
     // LiveListenerBus (potentially stopping a queue if it is empty)

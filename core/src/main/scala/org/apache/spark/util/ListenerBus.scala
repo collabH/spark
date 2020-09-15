@@ -32,6 +32,9 @@ import org.apache.spark.internal.Logging
  */
 private[spark] trait ListenerBus[L <: AnyRef, E] extends Logging {
 
+  /**
+   * 维护所有监听器和对应的定时器
+   */
   private[this] val listenersPlusTimers = new CopyOnWriteArrayList[(L, Option[Timer])]
 
   // Marked `private[spark]` for access in tests.
