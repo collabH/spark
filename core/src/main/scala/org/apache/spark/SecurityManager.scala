@@ -51,12 +51,15 @@ private[spark] class SecurityManager(
   // allow all users/groups to have view/modify permissions
   private val WILDCARD_ACL = "*"
 
+  // 是否开启认证。可以通过spark.authenticate属性配置，默认为false。
   private val authOn = sparkConf.get(NETWORK_AUTH_ENABLED)
   // keep spark.ui.acls.enable for backwards compatibility with 1.0
+  // 是否对账号进行授权。
   private var aclsOn =
     sparkConf.getBoolean("spark.acls.enable", sparkConf.getBoolean("spark.ui.acls.enable", false))
 
   // admin acls should be set before view or modify acls
+  //
   private var adminAcls: Set[String] =
     stringToSet(sparkConf.get("spark.admin.acls", ""))
 
