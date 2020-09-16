@@ -238,6 +238,7 @@ private[spark] class ExecutorAllocationManager(
    * the scheduling task.
    */
   def start(): Unit = {
+    // 启动一个定时线程回去定时调度，当添加executor和移除executor时
     listenerBus.addToManagementQueue(listener)
 
     val scheduleTask = new Runnable() {

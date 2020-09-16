@@ -210,6 +210,7 @@ private[spark] class ContextCleaner(sc: SparkContext) extends Logging {
   def doCleanupRDD(rddId: Int, blocking: Boolean): Unit = {
     try {
       logDebug("Cleaning RDD " + rddId)
+      // 移除RDD
       sc.unpersistRDD(rddId, blocking)
       listeners.asScala.foreach(_.rddCleaned(rddId))
       logInfo("Cleaned RDD " + rddId)
