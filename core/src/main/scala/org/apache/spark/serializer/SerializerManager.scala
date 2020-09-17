@@ -78,8 +78,10 @@ private[spark] class SerializerManager(
    * loaded yet. */
   private lazy val compressionCodec: CompressionCodec = CompressionCodec.createCodec(conf)
 
+  // 是否支持加密 可以通过spark.io.encryption.enabled（允许加密）、spark.io.encryption.keySizeBits（密钥长度，有128、192、256三种长度）、spark.io.encryption.keygen.algorithm（加密算法，默认为HmacSHA1）等属性进行具体的配置。
   def encryptionEnabled: Boolean = encryptionKey.isDefined
 
+  // 能否使用kryo，传入的是否包含在定义的基本类型，或者传入的stringClassTag
   def canUseKryo(ct: ClassTag[_]): Boolean = {
     primitiveAndPrimitiveArrayClassTags.contains(ct) || ct == stringClassTag
   }
