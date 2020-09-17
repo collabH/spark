@@ -270,6 +270,7 @@ public class TransportClientFactory implements Closeable {
 
         // 获取传输层客户端
         TransportClient client = clientRef.get();
+        // 阻塞式创建客户端
         Channel channel = channelRef.get();
         assert client != null : "Channel future completed successfully with null client";
 

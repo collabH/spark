@@ -102,6 +102,7 @@ private[netty] class Inbox(
     while (true) {
       safelyCall(endpoint) {
         message match {
+            // 处理RPC消息
           case RpcMessage(_sender, content, context) =>
             try {
               endpoint.receiveAndReply(context).applyOrElse[Any, Unit](content, { msg =>
@@ -115,11 +116,12 @@ private[netty] class Inbox(
                 throw e
             }
 
+            // 处理OneWay消息
           case OneWayMessage(_sender, content) =>
             endpoint.receive.applyOrElse[Any, Unit](content, { msg =>
               throw new SparkException(s"Unsupported message $message from ${_sender}")
             })
-
+          // 执行Onstart逻辑
           case OnStart =>
             endpoint.onStart()
             if (!endpoint.isInstanceOf[ThreadSafeRpcEndpoint]) {

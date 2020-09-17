@@ -20,6 +20,9 @@ package org.apache.spark.util
 import org.apache.spark.SparkConf
 import org.apache.spark.rpc.{RpcAddress, RpcEndpointRef, RpcEnv, RpcTimeout}
 
+/**
+ * rcp工具类，解析rpc相关配置
+ */
 private[spark] object RpcUtils {
 
   /**

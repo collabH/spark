@@ -91,12 +91,12 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv, numUsableCores: Int) exte
       if (stopped) {
         throw new IllegalStateException("RpcEnv has been stopped")
       }
-      // 如果本地缓存中已经存在一个相同名字的rpcEndpoint则抛出异常
+      // 如果本地缓存中已经存在一个相同名字的rpcEndpoint则抛出异常,如果名称已经存在抛出异常
       if (endpoints.putIfAbsent(name, new EndpointData(name, endpoint, endpointRef)) != null) {
         throw new IllegalArgumentException(s"There is already an RpcEndpoint called $name")
       }
       // 从缓存中拿到EndpointData数据(包含name,endpoint,endpointRef,inbox)
-      val data = endpoints.get(name)
+      val data: EndpointData = endpoints.get(name)
       // endpoint和ref放入endpointRefs
       endpointRefs.put(data.endpoint, data.ref)
       //将数据放入放入receivers中
@@ -111,8 +111,9 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv, numUsableCores: Int) exte
 
   // Should be idempotent
   private def unregisterRpcEndpoint(name: String): Unit = {
-    val data = endpoints.remove(name)
+    val data: EndpointData = endpoints.remove(name)
     if (data != null) {
+      // 将OnStop放入阻塞队列
       data.inbox.stop()
       // 数据放入receivers
       receivers.offer(data) // for the OnStop message
@@ -141,6 +142,7 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv, numUsableCores: Int) exte
     // 拿到全部的endpoint
     val iter = endpoints.keySet().iterator()
     while (iter.hasNext) {
+      // fixme 这里是否有必要，遍历一边map只为取name，然后在放入postMessage，根据name又取拿endpoint，可以写一个重载方法(endpoint,message)
       val name = iter.next
       // 发送消息
       postMessage(name, message, (e) => {
@@ -195,13 +197,13 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv, numUsableCores: Int) exte
                            message: InboxMessage,
                            callbackIfStopped: (Exception) => Unit): Unit = {
     val error = synchronized {
-      val data = endpoints.get(endpointName)
+      val data: EndpointData = endpoints.get(endpointName)
       if (stopped) {
         Some(new RpcEnvStoppedException())
       } else if (data == null) {
         Some(new SparkException(s"Could not find $endpointName."))
       } else {
-        // 发送消息
+        // 发送消息,这里异步操作，将message放入LinkedList中
         data.inbox.post(message)
         // 插入在recives
         receivers.offer(data)
@@ -258,10 +260,12 @@ private[netty] class Dispatcher(nettyEnv: NettyRpcEnv, numUsableCores: Int) exte
       try {
         while (true) {
           try {
+            // 当receivers没有消息这里会阻塞MessageLoop线程
             val data = receivers.take()
             // 如果消息为毒药消息，跳过并将该消息放入其他messageLoop中
             if (data == PoisonPill) {
               // Put PoisonPill back so that other MessageLoops can see it.
+              // 为了让其他线程也终止
               receivers.offer(PoisonPill)
               return
             }

@@ -59,7 +59,7 @@ private[spark] class SecurityManager(
     sparkConf.getBoolean("spark.acls.enable", sparkConf.getBoolean("spark.ui.acls.enable", false))
 
   // admin acls should be set before view or modify acls
-  //
+  // 管理员账号集合，通过spark.admin.acls配置，默认为空
   private var adminAcls: Set[String] =
     stringToSet(sparkConf.get("spark.admin.acls", ""))
 
@@ -67,17 +67,22 @@ private[spark] class SecurityManager(
   private var adminAclsGroups : Set[String] =
     stringToSet(sparkConf.get("spark.admin.acls.groups", ""))
 
+  // 有查看权限的账号的集合通过spark.ui.view.acls属性配置
   private var viewAcls: Set[String] = _
 
+  // 拥有查看权限的账号所在的组的集合 spark.ui.view.acls.groups配置
   private var viewAclsGroups: Set[String] = _
 
   // list of users who have permission to modify the application. This should
   // apply to both UI and CLI for things like killing the application.
+  //有修改权限的账号的集合。包括adminAcls、defaultAclUsers及spark. modify.acls属性配置的用户。
   private var modifyAcls: Set[String] = _
 
+  //拥有修改权限的账号所在组的集合。包括adminAclsGroups和spark.modify.acls.groups属性配置的用户。
   private var modifyAclsGroups: Set[String] = _
 
   // always add the current user and SPARK_USER to the viewAcls
+  //默认用户。包括系统属性user.name指定的用户或系统登录用户或者通过系统环境变量SPARK_USER进行设置的用户。
   private val defaultAclUsers = Set[String](System.getProperty("user.name", ""),
     Utils.getCurrentUserName())
 
@@ -87,6 +92,8 @@ private[spark] class SecurityManager(
   setViewAclsGroups(sparkConf.get("spark.ui.view.acls.groups", ""));
   setModifyAclsGroups(sparkConf.get("spark.modify.acls.groups", ""));
 
+  //密钥。在YARN模式下，首先使用sparkCookie从HadoopUGI中获取密钥。如果Hadoop UGI没有保存密钥，则生成新的密钥（密钥长度可以通过spark.
+  // authenticate.secretBitLength属性指定）并存入Hadoop UGI。其他模式下，则需要设置环境变量_SPARK_AUTH_SECRET（优先级更高）或spark.authenticate.secret属性指定。
   private var secretKey: String = _
   logInfo("SecurityManager: authentication " + (if (authOn) "enabled" else "disabled") +
     "; ui acls " + (if (aclsOn) "enabled" else "disabled") +
@@ -98,14 +105,18 @@ private[spark] class SecurityManager(
   // Set our own authenticator to properly negotiate user/password for HTTP connections.
   // This is needed by the HTTP client fetching from the HttpServer. Put here so its
   // only set once.
+  // 如果权限开启
   if (authOn) {
+    // 使用内部匿名类是指权限认证器
     Authenticator.setDefault(
       new Authenticator() {
         override def getPasswordAuthentication(): PasswordAuthentication = {
           var passAuth: PasswordAuthentication = null
+          // 获取用户信息
           val userInfo = getRequestingURL().getUserInfo()
           if (userInfo != null) {
             val  parts = userInfo.split(":", 2)
+            // 解密password
             passAuth = new PasswordAuthentication(parts(0), parts(1).toCharArray())
           }
           return passAuth
@@ -114,6 +125,7 @@ private[spark] class SecurityManager(
     )
   }
 
+  // hadoop配置
   private val hadoopConf = SparkHadoopUtil.get.newConfiguration(sparkConf)
   // the default SSL configuration - it will be used by all communication layers unless overwritten
   private val defaultSSLOptions =

@@ -53,6 +53,18 @@ private[spark] object RpcEnv {
     create(name, host, host, port, conf, securityManager, 0, clientMode)
   }
 
+  /**
+   * 创建rpcEnv
+   * @param name 系统名称、driver或executor
+   * @param bindAddress 绑定地址
+   * @param advertiseAddress
+   * @param port 端口
+   * @param conf spark配置
+   * @param securityManager 安全管理器
+   * @param numUsableCores 使用核数
+   * @param clientMode 客户端模式
+   * @return
+   */
   def create(
       name: String,
       bindAddress: String,
@@ -64,7 +76,7 @@ private[spark] object RpcEnv {
       clientMode: Boolean): RpcEnv = {
     val config = RpcEnvConfig(conf, name, bindAddress, advertiseAddress, port, securityManager,
       numUsableCores, clientMode)
-    // 使用NettyRpcEnvFactory创建RpcEnv
+    // 使用NettyRpcEnvFactory创建RpcEnv，实际上是继承rpcEnv的nettyEnv
     new NettyRpcEnvFactory().create(config)
   }
 }

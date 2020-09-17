@@ -108,20 +108,24 @@ private[netty] class Outbox(nettyEnv: NettyRpcEnv, val address: RpcAddress) {
   @GuardedBy("this")
   private val messages = new java.util.LinkedList[OutboxMessage]
 
+  //消息的发送都依赖于此传输客户端。
   @GuardedBy("this")
   private var client: TransportClient = null
 
   /**
+   * 指向当前Outbox内连接任务的java.util.concurrent.Future引用。如果当前没有连接任务，则connectFuture为null。
    * connectFuture points to the connect task. If there is no connect task, connectFuture will be
    * null.
    */
   @GuardedBy("this")
   private var connectFuture: java.util.concurrent.Future[Unit] = null
 
+  //当前Outbox是否停止的状态。
   @GuardedBy("this")
   private var stopped = false
 
   /**
+   * 表示当前Outbox内正有线程在处理messages列表中消息的状态。
    * If there is any thread draining the message queue
    */
   @GuardedBy("this")

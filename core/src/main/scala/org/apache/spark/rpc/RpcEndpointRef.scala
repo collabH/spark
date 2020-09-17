@@ -30,15 +30,18 @@ import org.apache.spark.util.RpcUtils
 private[spark] abstract class RpcEndpointRef(conf: SparkConf)
   extends Serializable with Logging {
 
+  // 最大重试次数
   private[this] val maxRetries = RpcUtils.numRetries(conf)
   private[this] val retryWaitMs = RpcUtils.retryWaitMs(conf)
   private[this] val defaultAskTimeout = RpcUtils.askRpcTimeout(conf)
 
   /**
+   * 返回当前RpcEndpointRef对应RpcEndpoint的RPC地址（RpcAddress）。
    * return the address for the [[RpcEndpointRef]]
    */
   def address: RpcAddress
 
+  //返回当前RpcEndpointRef对应RpcEndpoint的名称。
   def name: String
 
   /**
@@ -52,6 +55,8 @@ private[spark] abstract class RpcEndpointRef(conf: SparkConf)
    * receive the reply within the specified timeout.
    *
    * This method only sends the message once and never retries.
+   *
+   *
    */
   def ask[T: ClassTag](message: Any, timeout: RpcTimeout): Future[T]
 
@@ -69,7 +74,7 @@ private[spark] abstract class RpcEndpointRef(conf: SparkConf)
    *
    * Note: this is a blocking action which may cost a lot of time,  so don't call it in a message
    * loop of [[RpcEndpoint]].
-
+   * 此方法也采用了at-least-once的投递规则。此方法也非常类似于Akka中采用了at-least-once机制的Actor的ask方法。
    * @param message the message to send
    * @tparam T type of the reply message
    * @return the reply message from the corresponding [[RpcEndpoint]]

@@ -213,8 +213,8 @@ private[netty] class NettyRpcEnv(
     } else {
       require(receiver.address != null,
         "Cannot send message to client endpoint with no listen address.")
-      val targetOutbox = {
-        val outbox = outboxes.get(receiver.address)
+      val targetOutbox: Outbox = {
+        val outbox: Outbox = outboxes.get(receiver.address)
         if (outbox == null) {
           val newOutbox = new Outbox(this, receiver.address)
           val oldOutbox = outboxes.putIfAbsent(receiver.address, newOutbox)
@@ -729,6 +729,7 @@ private[netty] class NettyRpcHandler(
   // A variable to track the remote RpcEnv addresses of all clients
   private val remoteAddresses = new ConcurrentHashMap[RpcAddress, RpcAddress]()
 
+
   override def receive(
                         client: TransportClient,
                         message: ByteBuffer,
@@ -744,10 +745,18 @@ private[netty] class NettyRpcHandler(
     dispatcher.postOneWayMessage(messageToDispatch)
   }
 
+  /**
+   * 将byteBuffer的message转换成requetsMessage
+   * @param client
+   * @param message
+   * @return
+   */
   private def internalReceive(client: TransportClient, message: ByteBuffer): RequestMessage = {
     val addr = client.getChannel().remoteAddress().asInstanceOf[InetSocketAddress]
     assert(addr != null)
+    // 创建客户端地址
     val clientAddr = RpcAddress(addr.getHostString, addr.getPort)
+    // 保证请求消息
     val requestMessage = RequestMessage(nettyEnv, client, message)
     if (requestMessage.senderAddress == null) {
       // Create a new message with the socket address of the client as the sender.

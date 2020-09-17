@@ -530,6 +530,7 @@ class StandaloneRestSubmitSuite extends SparkFunSuite with BeforeAndAfterEach {
 }
 
 /**
+ * 模版的standalone模式的master 发送虚拟的消息
  * A mock standalone Master that responds with dummy messages.
  * In all responses, the success parameter is always true.
  */
