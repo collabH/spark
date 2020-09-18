@@ -52,6 +52,7 @@ private[spark] class MetricsConfig(conf: SparkConf) extends Logging {
     // Add default properties in case there's no properties file
     setDefaultProperties(properties)
 
+    // 从配置文件中加载配置
     loadPropertiesFromFile(conf.getOption("spark.metrics.conf"))
 
     // Also look for the properties in provided Spark configuration
@@ -130,6 +131,7 @@ private[spark] class MetricsConfig(conf: SparkConf) extends Logging {
     try {
       is = path match {
         case Some(f) => new FileInputStream(f)
+          // 默认metrics.properties
         case None => Utils.getSparkClassLoader.getResourceAsStream(DEFAULT_METRICS_CONF_FILENAME)
       }
 

@@ -294,9 +294,11 @@ object SparkEnv extends Logging {
     def registerOrLookupEndpoint(
         name: String, endpointCreator: => RpcEndpoint):
       RpcEndpointRef = {
+      // 如果是driver，将endpointCreator放入endpoint
       if (isDriver) {
         logInfo("Registering " + name)
         rpcEnv.setupEndpoint(name, endpointCreator)
+        // 设置driver的ref，driver的rpc地址和spark conf
       } else {
         RpcUtils.makeDriverRef(name, conf, rpcEnv)
       }
@@ -353,6 +355,7 @@ object SparkEnv extends Logging {
       serializerManager, conf, memoryManager, mapOutputTracker, shuffleManager,
       blockTransferService, securityManager, numUsableCores)
 
+    // 创建度量系统
     val metricsSystem = if (isDriver) {
       // Don't start metrics system right now for Driver.
       // We need to wait for the task scheduler to give us an app ID.
@@ -368,9 +371,11 @@ object SparkEnv extends Logging {
       ms
     }
 
+    //创建outputCommitCoordinator
     val outputCommitCoordinator = mockOutputCommitCoordinator.getOrElse {
       new OutputCommitCoordinator(conf, isDriver)
     }
+    // 创建outputCommitCoordinatorRef，
     val outputCommitCoordinatorRef = registerOrLookupEndpoint("OutputCommitCoordinator",
       new OutputCommitCoordinatorEndpoint(rpcEnv, outputCommitCoordinator))
     outputCommitCoordinator.coordinatorRef = Some(outputCommitCoordinatorRef)

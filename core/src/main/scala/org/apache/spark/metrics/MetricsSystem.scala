@@ -73,12 +73,17 @@ private[spark] class MetricsSystem private (
     securityMgr: SecurityManager)
   extends Logging {
 
+  // 度量配置，从sparkConf中提取
   private[this] val metricsConfig = new MetricsConfig(conf)
 
+  // 度量输出
   private val sinks = new mutable.ArrayBuffer[Sink]
+  // 度量源
   private val sources = new mutable.ArrayBuffer[Source]
+  // 度量注册点MetricRegistry
   private val registry = new MetricRegistry()
 
+  //用于标记当前MetricsSystem是否正在运行
   private var running: Boolean = false
 
   // Treat MetricsServlet as a special sink as it should be exposed to add handlers to web ui
@@ -92,8 +97,10 @@ private[spark] class MetricsSystem private (
     metricsServlet.map(_.getHandlers(conf)).getOrElse(Array())
   }
 
+  // 初始化指标配置
   metricsConfig.initialize()
 
+  // 启动度量系统
   def start(registerStaticSources: Boolean = true) {
     require(!running, "Attempting to start a MetricsSystem that is already running")
     running = true
@@ -230,6 +237,13 @@ private[spark] object MetricsSystem {
     }
   }
 
+  /**
+   * 创键度量系统
+   * @param instance 实例名称
+   * @param conf sparkConf
+   * @param securityMgr 安全管理器
+   * @return
+   */
   def createMetricsSystem(
       instance: String, conf: SparkConf, securityMgr: SecurityManager): MetricsSystem = {
     new MetricsSystem(instance, conf, securityMgr)
