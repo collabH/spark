@@ -57,6 +57,7 @@ import org.apache.spark.util.Utils
 abstract class Broadcast[T: ClassTag](val id: Long) extends Serializable with Logging {
 
   /**
+   * 标示广播变量是否有效
    * Flag signifying whether the broadcast variable is valid
    * (that is, not already destroyed) or not.
    */
@@ -71,7 +72,9 @@ abstract class Broadcast[T: ClassTag](val id: Long) extends Serializable with Lo
   }
 
   /**
+   * 异步删除executor上此广播的缓存副本。
    * Asynchronously delete cached copies of this broadcast on the executors.
+   * 如果在使用broadcast之后调用这个，它重新发送给每个executor
    * If the broadcast is used after this is called, it will need to be re-sent to each executor.
    */
   def unpersist() {
@@ -138,6 +141,7 @@ abstract class Broadcast[T: ClassTag](val id: Long) extends Serializable with Lo
    */
   protected def doDestroy(blocking: Boolean)
 
+  // 校验广播变量是否被校验
   /** Check if this broadcast is valid. If not valid, exception is thrown. */
   protected def assertValid() {
     if (!_isValid) {

@@ -21,10 +21,11 @@ import java.io._
 import java.nio.ByteBuffer
 import java.util.zip.Adler32
 
+import org.apache.commons.collections.map.ReferenceMap
+
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 import scala.util.Random
-
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.io.CompressionCodec
@@ -77,14 +78,18 @@ private[spark] class TorrentBroadcast[T: ClassTag](obj: T, id: Long)
       None
     }
     // Note: use getSizeAsKb (not bytes) to maintain compatibility if no units are provided
+    // 广播变量的块大小
     blockSize = conf.getSizeAsKb("spark.broadcast.blockSize", "4m").toInt * 1024
+    // 是否开启校验和，默认开启
     checksumEnabled = conf.getBoolean("spark.broadcast.checksum", true)
   }
   setConf(SparkEnv.get.conf)
 
+  // 保证广播id
   private val broadcastId = BroadcastBlockId(id)
 
   /** Total number of blocks this broadcast variable contains. */
+  //广播变量包含的总块数
   private val numBlocks: Int = writeBlocks(obj)
 
   /** Whether to generate checksum for blocks or not. */
@@ -111,7 +116,7 @@ private[spark] class TorrentBroadcast[T: ClassTag](obj: T, id: Long)
 
   /**
    * Divide the object into multiple blocks and put those blocks in the block manager.
-   *
+   * 分割对象层多blocks 并且将这些block放入blockManager中
    * @param value the object to divide
    * @return number of blocks this broadcast variable is divided into
    */
@@ -120,20 +125,27 @@ private[spark] class TorrentBroadcast[T: ClassTag](obj: T, id: Long)
     // Store a copy of the broadcast variable in the driver so that tasks run on the driver
     // do not create a duplicate copy of the broadcast variable's value.
     val blockManager = SparkEnv.get.blockManager
+    // 将广播变量写成一个单独对象的block
     if (!blockManager.putSingle(broadcastId, value, MEMORY_AND_DISK, tellMaster = false)) {
       throw new SparkException(s"Failed to store $broadcastId in BlockManager")
     }
-    val blocks =
+    val blocks = {
+      // 将对象块化
       TorrentBroadcast.blockifyObject(value, blockSize, SparkEnv.get.serializer, compressionCodec)
+    }
     if (checksumEnabled) {
+      // 初始化校验和数组的长度
       checksums = new Array[Int](blocks.length)
     }
     blocks.zipWithIndex.foreach { case (block, i) =>
       if (checksumEnabled) {
+        // 根据单独块计算校验和，存入数组中
         checksums(i) = calcChecksum(block)
       }
+      // 创建对应块的片id
       val pieceId = BroadcastBlockId(id, "piece" + i)
       val bytes = new ChunkedByteBuffer(block.duplicate())
+      // 单独上传相关的block
       if (!blockManager.putBytes(pieceId, bytes, MEMORY_AND_DISK_SER, tellMaster = true)) {
         throw new SparkException(s"Failed to store $pieceId of $broadcastId in local BlockManager")
       }
@@ -145,15 +157,19 @@ private[spark] class TorrentBroadcast[T: ClassTag](obj: T, id: Long)
   private def readBlocks(): Array[BlockData] = {
     // Fetch chunks of data. Note that all these chunks are stored in the BlockManager and reported
     // to the driver, so other executors can pull these chunks from this executor as well.
+    // blocks个数
     val blocks = new Array[BlockData](numBlocks)
+    // blockManager
     val bm = SparkEnv.get.blockManager
 
+    // 随机获取分片block
     for (pid <- Random.shuffle(Seq.range(0, numBlocks))) {
       val pieceId = BroadcastBlockId(id, "piece" + pid)
       logDebug(s"Reading piece $pieceId of $broadcastId")
       // First try getLocalBytes because there is a chance that previous attempts to fetch the
       // broadcast blocks have already fetched some of the blocks. In that case, some blocks
       // would be available locally (on this executor).
+      // 本地获取，找不到去远程拉去block
       bm.getLocalBytes(pieceId) match {
         case Some(block) =>
           blocks(pid) = block
@@ -204,19 +220,28 @@ private[spark] class TorrentBroadcast[T: ClassTag](obj: T, id: Long)
     out.defaultWriteObject()
   }
 
+  /**
+   * 读取广播块，从driver读取或其他executor读取
+   * @return
+   */
   private def readBroadcastBlock(): T = Utils.tryOrIOException {
     TorrentBroadcast.synchronized {
-      val broadcastCache = SparkEnv.get.broadcastManager.cachedValues
+
+      val broadcastCache: ReferenceMap = SparkEnv.get.broadcastManager.cachedValues
 
       Option(broadcastCache.get(broadcastId)).map(_.asInstanceOf[T]).getOrElse {
         setConf(SparkEnv.get.conf)
+        // 获取当前blockManager
         val blockManager = SparkEnv.get.blockManager
+        // 首先从本地获取广播对象，即通过BlockManager putSingle写入存储体系的广播多谢。
         blockManager.getLocalValues(broadcastId) match {
           case Some(blockResult) =>
             if (blockResult.data.hasNext) {
               val x = blockResult.data.next().asInstanceOf[T]
+              // 释放block的锁
               releaseLock(broadcastId)
 
+              // 将block放入ubroadcastCache中
               if (x != null) {
                 broadcastCache.put(broadcastId, x)
               }
@@ -225,6 +250,7 @@ private[spark] class TorrentBroadcast[T: ClassTag](obj: T, id: Long)
             } else {
               throw new SparkException(s"Failed to get locally stored broadcast data: $broadcastId")
             }
+            // 广播变量不是通过putSingle写入BlockManager中的，则通过readBlocks读取存储在driver或executor的广播快
           case None =>
             logInfo("Started reading broadcast variable " + id)
             val startTimeMs = System.currentTimeMillis()
@@ -318,6 +344,7 @@ private object TorrentBroadcast extends Logging {
    */
   def unpersist(id: Long, removeFromDriver: Boolean, blocking: Boolean): Unit = {
     logDebug(s"Unpersisting TorrentBroadcast $id")
+    // 移除广播变量
     SparkEnv.get.blockManager.master.removeBroadcast(id, removeFromDriver, blocking)
   }
 }

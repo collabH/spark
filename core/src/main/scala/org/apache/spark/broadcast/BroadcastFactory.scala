@@ -29,17 +29,30 @@ import org.apache.spark.SparkConf
  */
 private[spark] trait BroadcastFactory {
 
+  /**
+   * 初始化广播工厂
+   * @param isDriver 是否driver
+   * @param conf spark配置
+   * @param securityMgr 安全管理器
+   */
   def initialize(isDriver: Boolean, conf: SparkConf, securityMgr: SecurityManager): Unit
 
   /**
+   * 创建一个新的广播变量
    * Creates a new broadcast variable.
    *
    * @param value value to broadcast
    * @param isLocal whether we are in local mode (single JVM process)
-   * @param id unique id representing this broadcast variable
+   * @param id unique id representing this broadcast variable 广播变量的唯一id
    */
   def newBroadcast[T: ClassTag](value: T, isLocal: Boolean, id: Long): Broadcast[T]
 
+  /**
+   * 移除广播变量
+   * @param id 广播变量的唯一id
+   * @param removeFromDriver 是否从driver移除
+   * @param blocking 是否阻塞
+   */
   def unbroadcast(id: Long, removeFromDriver: Boolean, blocking: Boolean): Unit
 
   def stop(): Unit
