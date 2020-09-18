@@ -301,9 +301,9 @@ object SparkEnv extends Logging {
         RpcUtils.makeDriverRef(name, conf, rpcEnv)
       }
     }
-
+    // 创建广播变量管理器
     val broadcastManager = new BroadcastManager(isDriver, conf, securityManager)
-
+    // 创建map输入追踪器
     val mapOutputTracker = if (isDriver) {
       new MapOutputTrackerMaster(conf, broadcastManager, isLocal)
     } else {

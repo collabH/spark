@@ -223,6 +223,11 @@ private[spark] class MapOutputTrackerMasterEndpoint(
 
   logDebug("init") // force eager creation of logger
 
+  /**
+   * 接收消息并且回复消息
+   * @param context
+   * @return
+   */
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case GetMapOutputStatuses(shuffleId: Int) =>
       val hostPort = context.senderAddress.hostPort
@@ -245,6 +250,7 @@ private[spark] class MapOutputTrackerMasterEndpoint(
 */
 private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging {
   /** Set to the MapOutputTrackerMasterEndpoint living on the driver. */
+  // track的endpointRef对象
   var trackerEndpoint: RpcEndpointRef = _
 
   /**
@@ -258,6 +264,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
   protected val epochLock = new AnyRef
 
   /**
+   * 发送消息到trackerEndpoint并回去结果
    * Send a message to the trackerEndpoint and get its result within a default timeout, or
    * throw a SparkException if this fails.
    */
@@ -271,7 +278,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
     }
   }
 
-  /** Send a one-way message to the trackerEndpoint, to which we expect it to reply with true. */
+  /**Send a one-way message to the trackerEndpoint, to which we expect it to reply with true. */
   protected def sendTracker(message: Any) {
     val response = askTracker[Boolean](message)
     if (response != true) {
@@ -280,7 +287,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
     }
   }
 
-  // For testing
+  // For testing 根据shuffleId和reduceId获取Map输出的中间文件的大小
   def getMapSizesByExecutorId(shuffleId: Int, reduceId: Int)
       : Iterator[(BlockManagerId, Seq[(BlockId, Long)])] = {
     getMapSizesByExecutorId(shuffleId, reduceId, reduceId + 1)
@@ -299,6 +306,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
       : Iterator[(BlockManagerId, Seq[(BlockId, Long)])]
 
   /**
+   * 删除指定的shuffle stage的map输出状态信息
    * Deletes map output status information for the specified shuffle stage.
    */
   def unregisterShuffle(shuffleId: Int): Unit
@@ -322,6 +330,8 @@ private[spark] class MapOutputTrackerMaster(
   extends MapOutputTracker(conf) {
 
   // The size at which we use Broadcast to send the map output statuses to the executors
+  //用于广播的最小大小。
+  // 可以使用spark.shuffle.mapOutput. minSizeForBroadcast属性配置，默认为512KB。minSizeForBroadcast必须小于maxRpcMessageSize。
   private val minSizeForBroadcast =
     conf.getSizeAsBytes("spark.shuffle.mapOutput.minSizeForBroadcast", "512k").toInt
 
@@ -345,6 +355,7 @@ private[spark] class MapOutputTrackerMaster(
   // Exposed for testing
   val shuffleStatuses = new ConcurrentHashMap[Int, ShuffleStatus]().asScala
 
+  // 最大的rpc消息大小
   private val maxRpcMessageSize = RpcUtils.maxMessageSizeBytes(conf)
 
   // requests for map output statuses
@@ -371,6 +382,10 @@ private[spark] class MapOutputTrackerMaster(
     throw new IllegalArgumentException(msg)
   }
 
+  /**
+   * 发送GetMapOutputMessage消息，线程池会启动MessageLoop线程处理mapOutputRequests阻塞队列中的消息
+   * @param message
+   */
   def post(message: GetMapOutputMessage): Unit = {
     mapOutputRequests.offer(message)
   }
@@ -381,18 +396,20 @@ private[spark] class MapOutputTrackerMaster(
       try {
         while (true) {
           try {
-            val data = mapOutputRequests.take()
+            val data: GetMapOutputMessage = mapOutputRequests.take()
              if (data == PoisonPill) {
               // Put PoisonPill back so that other MessageLoops can see it.
               mapOutputRequests.offer(PoisonPill)
               return
             }
-            val context = data.context
+            val context: RpcCallContext = data.context
             val shuffleId = data.shuffleId
             val hostPort = context.senderAddress.hostPort
             logDebug("Handling request to send map output locations for shuffle " + shuffleId +
               " to " + hostPort)
+            // 根据shuffleid获取第一次shuffle的状态
             val shuffleStatus = shuffleStatuses.get(shuffleId).head
+            // rpcContext将序列化后的mapStatus返回给其他executor
             context.reply(
               shuffleStatus.serializedMapStatus(broadcastManager, isLocal, minSizeForBroadcast))
           } catch {
