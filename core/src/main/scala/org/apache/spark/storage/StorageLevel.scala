@@ -37,6 +37,7 @@ import org.apache.spark.util.Utils
  */
 @DeveloperApi
 class StorageLevel private(
+
     private var _useDisk: Boolean,
     private var _useMemory: Boolean,
     private var _useOffHeap: Boolean,
@@ -49,6 +50,7 @@ class StorageLevel private(
     this((flags & 8) != 0, (flags & 4) != 0, (flags & 2) != 0, (flags & 1) != 0, replication)
   }
 
+  // 默认存储在内存中
   def this() = this(false, true, false, false)  // For deserialization
 
   def useDisk: Boolean = _useDisk
@@ -88,16 +90,16 @@ class StorageLevel private(
   def toInt: Int = {
     var ret = 0
     if (_useDisk) {
-      ret |= 8
+      ret |= 8 // 1000 | 0000=0111
     }
     if (_useMemory) {
-      ret |= 4
+      ret |= 4 // 0100 | 0000 =1011
     }
     if (_useOffHeap) {
-      ret |= 2
+      ret |= 2  // 0010 | 0000 =1101
     }
     if (_deserialized) {
-      ret |= 1
+      ret |= 1  // 1110
     }
     ret
   }

@@ -32,18 +32,27 @@ import org.apache.spark.annotation.DeveloperApi
  */
 @DeveloperApi
 sealed abstract class BlockId {
-  /** A globally unique identifier for this Block. Can be used for ser/de. */
+  /** A globally unique identifier for this Block. Can be used for ser/de. 用于序列化/反序列化 */
   def name: String
 
   // convenience methods
+  // 如果是RDD将转换为RDDBlockId
   def asRDDId: Option[RDDBlockId] = if (isRDD) Some(asInstanceOf[RDDBlockId]) else None
+  // 当前BlockId是否是RddBlockId
   def isRDD: Boolean = isInstanceOf[RDDBlockId]
+  // 是否ShuffleBlockId
   def isShuffle: Boolean = isInstanceOf[ShuffleBlockId]
+  // 是否BroadcastBlockId
   def isBroadcast: Boolean = isInstanceOf[BroadcastBlockId]
 
   override def toString: String = name
 }
 
+/**
+ * name格式rdd_rddId_切片index
+ * @param rddId
+ * @param splitIndex
+ */
 @DeveloperApi
 case class RDDBlockId(rddId: Int, splitIndex: Int) extends BlockId {
   override def name: String = "rdd_" + rddId + "_" + splitIndex
@@ -103,6 +112,9 @@ class UnrecognizedBlockId(name: String)
 
 @DeveloperApi
 object BlockId {
+  /**
+   * 正则表达式校验BlockId格式
+   */
   val RDD = "rdd_([0-9]+)_([0-9]+)".r
   val SHUFFLE = "shuffle_([0-9]+)_([0-9]+)_([0-9]+)".r
   val SHUFFLE_DATA = "shuffle_([0-9]+)_([0-9]+)_([0-9]+).data".r

@@ -58,8 +58,11 @@ import org.apache.spark.util.io.ChunkedByteBuffer
 
 /* Class for returning a fetched block and associated metrics. */
 private[spark] class BlockResult(
+    // block及Block相关联的度量数据
     val data: Iterator[Any],
+    // 读取block的方法，readMethod采用枚举类型DataReadMethod提供的Memory、Disk、Hadoop、Network四个枚举值。
     val readMethod: DataReadMethod.Value,
+    // 读取block的字节长度
     val bytes: Long)
 
 /**
