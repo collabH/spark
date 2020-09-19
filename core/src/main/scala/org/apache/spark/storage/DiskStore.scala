@@ -40,6 +40,12 @@ import org.apache.spark.util.io.ChunkedByteBuffer
 /**
  * Stores BlockManager blocks on disk.
  */
+/**
+ *
+ * @param conf sparkConf
+ * @param diskManager 磁盘Block管理器
+ * @param securityManager 安全管理器
+ */
 private[spark] class DiskStore(
     conf: SparkConf,
     diskManager: DiskBlockManager,
@@ -47,6 +53,7 @@ private[spark] class DiskStore(
 
   private val minMemoryMapBytes = conf.getSizeAsBytes("spark.storage.memoryMapThreshold", "2m")
   private val maxMemoryMapBytes = conf.get(config.MEMORY_MAP_LIMIT_FOR_TESTS)
+  // 存储blockId和对应的blockSize
   private val blockSizes = new ConcurrentHashMap[BlockId, Long]()
 
   def getSize(blockId: BlockId): Long = blockSizes.get(blockId)
@@ -62,7 +69,8 @@ private[spark] class DiskStore(
     }
     logDebug(s"Attempting to put block $blockId")
     val startTime = System.currentTimeMillis
-    val file = diskManager.getFile(blockId)
+    // 根据block从DiskBlockManager中获取file
+    val file: File = diskManager.getFile(blockId)
     val out = new CountingWritableChannel(openForWrite(file))
     var threwException: Boolean = true
     try {
@@ -92,7 +100,7 @@ private[spark] class DiskStore(
   }
 
   def putBytes(blockId: BlockId, bytes: ChunkedByteBuffer): Unit = {
-    put(blockId) { channel =>
+    put(blockId) { channel: WritableByteChannel =>
       bytes.writeFully(channel)
     }
   }

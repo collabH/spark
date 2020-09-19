@@ -32,14 +32,23 @@ import org.apache.spark.util.{ShutdownHookManager, Utils}
  * Block files are hashed among the directories listed in spark.local.dir (or in
  * SPARK_LOCAL_DIRS, if it's set).
  */
-private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolean) extends Logging {
-
+/**
+ *
+ * @param conf
+ * @param deleteFilesOnStop // 停止DiskBlockManager的时候是否删除本地目录的布尔类型标记。
+ *                          当不指定外部的ShuffleClient（即spark.shuffle.service.enabled属性为false）或者当前实例是Driver时，此属性为true。
+ */
+private[spark] class DiskBlockManager(conf: SparkConf,
+                                       deleteFilesOnStop: Boolean) extends Logging {
+  // 本地子目录个数
   private[spark] val subDirsPerLocalDir = conf.getInt("spark.diskStore.subDirectories", 64)
 
   /* Create one local directory for each path mentioned in spark.local.dir; then, inside this
    * directory, create multiple subdirectories that we will hash files into, in order to avoid
    * having really large inodes at the top level. */
+  // 本地目录数组，创建本地目录
   private[spark] val localDirs: Array[File] = createLocalDirs(conf)
+  // 本地目录创建失败
   if (localDirs.isEmpty) {
     logError("Failed to create any local dir.")
     System.exit(ExecutorExitCode.DISK_STORE_FAILED_TO_CREATE_DIR)
@@ -48,6 +57,7 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
   // of subDirs(i) is protected by the lock of subDirs(i)
   private val subDirs = Array.fill(localDirs.length)(new Array[File](subDirsPerLocalDir))
 
+  // 添加shutdown钩子函数
   private val shutdownHook = addShutdownHook()
 
   /** Looks up a file by hashing it into one of our local subdirectories. */
@@ -56,11 +66,14 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
   def getFile(filename: String): File = {
     // Figure out which local directory it hashes to, and which subdirectory in that
     val hash = Utils.nonNegativeHash(filename)
+    // 获取dirId
     val dirId = hash % localDirs.length
+    // 获取subDirId
     val subDirId = (hash / localDirs.length) % subDirsPerLocalDir
 
     // Create the subdirectory if it doesn't already exist
     val subDir = subDirs(dirId).synchronized {
+      // 获取oldSubDir
       val old = subDirs(dirId)(subDirId)
       if (old != null) {
         old
@@ -114,7 +127,9 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
 
   /** Produces a unique block id and File suitable for storing local intermediate results. */
   def createTempLocalBlock(): (TempLocalBlockId, File) = {
+    // 创建中间零食结果本地BlockId
     var blockId = new TempLocalBlockId(UUID.randomUUID())
+    // 如果存在则在生产
     while (getFile(blockId).exists()) {
       blockId = new TempLocalBlockId(UUID.randomUUID())
     }
@@ -131,6 +146,7 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
   }
 
   /**
+   * 创建本地目录存储block数据
    * Create local directories for storing block data. These directories are
    * located inside configured local directories and won't
    * be deleted on JVM exit when using the external shuffle service.
@@ -153,6 +169,7 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
     logDebug("Adding shutdown hook") // force eager creation of logger
     ShutdownHookManager.addShutdownHook(ShutdownHookManager.TEMP_DIR_SHUTDOWN_PRIORITY + 1) { () =>
       logInfo("Shutdown hook called")
+      // 关闭DiskBlockManager
       DiskBlockManager.this.doStop()
     }
   }

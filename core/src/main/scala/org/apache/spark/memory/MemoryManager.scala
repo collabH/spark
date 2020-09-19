@@ -37,6 +37,13 @@ import org.apache.spark.unsafe.memory.MemoryAllocator
  * sorts and aggregations, while storage memory refers to that used for caching and propagating
  * internal data across the cluster. There exists one MemoryManager per JVM.
  */
+/**
+ *
+ * @param conf spark集群配置
+ * @param numCores CPU核数
+ * @param onHeapStorageMemory 堆内Storage区域内存
+ * @param onHeapExecutionMemory  堆内Execution内存
+ */
 private[spark] abstract class MemoryManager(
     conf: SparkConf,
     numCores: Int,
@@ -60,10 +67,13 @@ private[spark] abstract class MemoryManager(
   onHeapStorageMemoryPool.incrementPoolSize(onHeapStorageMemory)
   onHeapExecutionMemoryPool.incrementPoolSize(onHeapExecutionMemory)
 
+  //"spark.memory.offHeap.size" 最大堆外内存
   protected[this] val maxOffHeapMemory = conf.get(MEMORY_OFFHEAP_SIZE)
+  // 堆外storage区域内存
   protected[this] val offHeapStorageMemory =
     (maxOffHeapMemory * conf.getDouble("spark.memory.storageFraction", 0.5)).toLong
 
+  // 初始化堆外execution poolSize
   offHeapExecutionMemoryPool.incrementPoolSize(maxOffHeapMemory - offHeapStorageMemory)
   offHeapStorageMemoryPool.incrementPoolSize(offHeapStorageMemory)
 
@@ -214,7 +224,7 @@ private[spark] abstract class MemoryManager(
 
   /**
    * The default page size, in bytes.
-   *
+   * 默认pageSize
    * If user didn't explicitly set "spark.buffer.pageSize", we figure out the default value
    * by looking at the number of cores available to the process, and the total amount of memory,
    * and then divide it by a factor of safety.
@@ -231,6 +241,7 @@ private[spark] abstract class MemoryManager(
     }
     val size = ByteArrayMethods.nextPowerOf2(maxTungstenMemory / cores / safetyFactor)
     val default = math.min(maxPageSize, math.max(minPageSize, size))
+    // pageSize
     conf.getSizeAsBytes("spark.buffer.pageSize", default)
   }
 

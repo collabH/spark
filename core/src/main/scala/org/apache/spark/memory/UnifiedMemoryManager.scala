@@ -44,6 +44,14 @@ import org.apache.spark.storage.BlockId
  *                          it if necessary. Cached blocks can be evicted only if actual
  *                          storage memory usage exceeds this region.
  */
+
+/**
+ *
+ * @param conf spark集群配置
+ * @param maxHeapMemory
+ * @param onHeapStorageRegionSize
+ * @param numCores CPU核数
+ */
 private[spark] class UnifiedMemoryManager private[memory] (
     conf: SparkConf,
     val maxHeapMemory: Long,
@@ -55,6 +63,9 @@ private[spark] class UnifiedMemoryManager private[memory] (
     onHeapStorageRegionSize,
     maxHeapMemory - onHeapStorageRegionSize) {
 
+  /**
+   * 判断内存大小
+   */
   private def assertInvariants(): Unit = {
     assert(onHeapExecutionMemoryPool.poolSize + onHeapStorageMemoryPool.poolSize == maxHeapMemory)
     assert(
@@ -63,6 +74,10 @@ private[spark] class UnifiedMemoryManager private[memory] (
 
   assertInvariants()
 
+  /**
+   * 最大堆内内存
+   * @return
+   */
   override def maxOnHeapStorageMemory: Long = synchronized {
     maxHeapMemory - onHeapExecutionMemoryPool.memoryUsed
   }
@@ -100,6 +115,7 @@ private[spark] class UnifiedMemoryManager private[memory] (
     }
 
     /**
+     * 申请storge区域的内存到execution中使用
      * Grow the execution pool by evicting cached blocks, thereby shrinking the storage pool.
      *
      * When acquiring memory for a task, the execution pool may need to make multiple
@@ -112,7 +128,7 @@ private[spark] class UnifiedMemoryManager private[memory] (
         // storage. We can reclaim any free memory from the storage pool. If the storage pool
         // has grown to become larger than `storageRegionSize`, we can evict blocks and reclaim
         // the memory that storage has borrowed from execution.
-        val memoryReclaimableFromStorage = math.max(
+        val memoryReclaimableFromStorage: Long = math.max(
           storagePool.memoryFree,
           storagePool.poolSize - storageRegionSize)
         if (memoryReclaimableFromStorage > 0) {
@@ -162,15 +178,20 @@ private[spark] class UnifiedMemoryManager private[memory] (
         offHeapStorageMemoryPool,
         maxOffHeapStorageMemory)
     }
+    // 超过最大内存限制
     if (numBytes > maxMemory) {
       // Fail fast if the block simply won't fit
       logInfo(s"Will not store $blockId as the required space ($numBytes bytes) exceeds our " +
         s"memory limit ($maxMemory bytes)")
       return false
     }
+    // 如果大于storagePool的free内存
     if (numBytes > storagePool.memoryFree) {
       // There is not enough free memory in the storage pool, so try to borrow free memory from
       // the execution pool.
+      // 尝试区execution申请内存
+      // fixme 这里storage区域不足，去申请execution区域内存，但是这里没有校验execution+storge的free内存是否满足申请，如果不满足还需要走到最终storagePool后才能感知，
+      // fixme 然后去尝试回收其他block的内存，为什么不能在这里直接就进行尝试，回收其他block，链路不用在走下去
       val memoryBorrowedFromExecution = Math.min(executionPool.memoryFree,
         numBytes - storagePool.memoryFree)
       executionPool.decrementPoolSize(memoryBorrowedFromExecution)
@@ -206,6 +227,7 @@ object UnifiedMemoryManager {
   }
 
   /**
+   * 返回storage和execution区域共享内存部分
    * Return the total amount of memory shared between execution and storage, in bytes.
    */
   private def getMaxMemory(conf: SparkConf): Long = {
@@ -220,6 +242,7 @@ object UnifiedMemoryManager {
     }
     // SPARK-12759 Check executor memory to fail fast if memory is insufficient
     if (conf.contains("spark.executor.memory")) {
+      // executor内存
       val executorMemory = conf.getSizeAsBytes("spark.executor.memory")
       if (executorMemory < minSystemMemory) {
         throw new IllegalArgumentException(s"Executor memory $executorMemory must be at least " +

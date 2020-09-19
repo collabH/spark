@@ -35,6 +35,9 @@ private[memory] class StorageMemoryPool(
     memoryMode: MemoryMode
   ) extends MemoryPool(lock) with Logging {
 
+  /**
+   * Storage内存池名称
+   */
   private[this] val poolName: String = memoryMode match {
     case MemoryMode.ON_HEAP => "on-heap storage"
     case MemoryMode.OFF_HEAP => "off-heap storage"
@@ -44,13 +47,16 @@ private[memory] class StorageMemoryPool(
   private[this] var _memoryUsed: Long = 0L
 
   /**
-    * 使用内存亮
+    * 使用内存量
     * @return
     */
   override def memoryUsed: Long = lock.synchronized {
     _memoryUsed
   }
 
+  /**
+   * memoryStore
+   */
   private var _memoryStore: MemoryStore = _
   def memoryStore: MemoryStore = {
     if (_memoryStore == null) {
@@ -68,6 +74,7 @@ private[memory] class StorageMemoryPool(
   }
 
   /**
+   * 申请内存的N bytes换成给定的block
    * Acquire N bytes of memory to cache the given block, evicting existing ones if necessary.
    *
    * @return whether all N bytes were successfully granted.
@@ -92,9 +99,11 @@ private[memory] class StorageMemoryPool(
     assert(numBytesToAcquire >= 0)
     assert(numBytesToFree >= 0)
     assert(memoryUsed <= poolSize)
+    // 如果numBytesToFree大于0，说明memoryFree内存不足，需要使用内存
     if (numBytesToFree > 0) {
       memoryStore.evictBlocksToFreeSpace(Some(blockId), numBytesToFree, memoryMode)
     }
+    // 释放内存后继续判断是否内足够可用内存可以申请
     // NOTE: If the memory store evicts blocks, then those evictions will synchronously call
     // back into this StorageMemoryPool in order to free memory. Therefore, these variables
     // should have been updated.
@@ -124,12 +133,17 @@ private[memory] class StorageMemoryPool(
    * Note: this method doesn't actually reduce the pool size but relies on the caller to do so.
    *
    * @return number of bytes to be removed from the pool's capacity.
+   * 用于释放指定大小的空间，缩小内存池的大小。
    */
   def freeSpaceToShrinkPool(spaceToFree: Long): Long = lock.synchronized {
+    // 计算最小的空闲逻辑内存
     val spaceFreedByReleasingUnusedMemory = math.min(spaceToFree, memoryFree)
+    // 计算剩余的空闲内存
     val remainingSpaceToFree = spaceToFree - spaceFreedByReleasingUnusedMemory
+    // 如果大于0
     if (remainingSpaceToFree > 0) {
       // If reclaiming free memory did not adequately shrink the pool, begin evicting blocks:
+      // 后收其他block的内存
       val spaceFreedByEviction =
         memoryStore.evictBlocksToFreeSpace(None, remainingSpaceToFree, memoryMode)
       // When a block is released, BlockManager.dropFromMemory() calls releaseMemory(), so we do
