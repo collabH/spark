@@ -39,17 +39,33 @@ import org.apache.spark.util.{SizeEstimator, Utils}
 import org.apache.spark.util.collection.SizeTrackingVector
 import org.apache.spark.util.io.{ChunkedByteBuffer, ChunkedByteBufferOutputStream}
 
+/**
+ * Block的抽象形式
+ * @tparam T
+ */
 private sealed trait MemoryEntry[T] {
+  // block当前大小
   def size: Long
+  // block存入内存的模式
   def memoryMode: MemoryMode
+  // block的类型标志
   def classTag: ClassTag[T]
 }
+// 反序列化后的MemoryEntry
 private case class DeserializedMemoryEntry[T](
     value: Array[T],
     size: Long,
     classTag: ClassTag[T]) extends MemoryEntry[T] {
   val memoryMode: MemoryMode = MemoryMode.ON_HEAP
 }
+
+/**
+ * 序列化后的MemoryEntry
+ * @param buffer
+ * @param memoryMode
+ * @param classTag
+ * @tparam T
+ */
 private case class SerializedMemoryEntry[T](
     buffer: ChunkedByteBuffer,
     memoryMode: MemoryMode,
@@ -59,9 +75,10 @@ private case class SerializedMemoryEntry[T](
 
 private[storage] trait BlockEvictionHandler {
   /**
+   *  从内存中删除一个block，可能将它放在disk中 当内存需要释放时调用
    * Drop a block from memory, possibly putting it on disk if applicable. Called when the memory
    * store reaches its limit and needs to free up space.
-   *
+   * 如果数据没有put到disk，它将不会被创建
    * If `data` is not put on disk, it won't be created.
    *
    * The caller of this method must hold a write lock on the block before calling this method.
@@ -89,24 +106,30 @@ private[spark] class MemoryStore(
   // Note: all changes to memory allocations, notably putting blocks, evicting blocks, and
   // acquiring or releasing unroll memory, must be synchronized on `memoryManager`!
 
+  // blockId和MemoryEntry的映射
   private val entries = new LinkedHashMap[BlockId, MemoryEntry[_]](32, 0.75f, true)
 
   // A mapping from taskAttemptId to amount of memory used for unrolling a block (in bytes)
   // All accesses of this map are assumed to have manually synchronized on `memoryManager`
+  // 任务尝试线程的标识TaskAttemptId与任务尝试线程在堆内存展开的所有Block占用的内存大小之和之间的映射关系。
   private val onHeapUnrollMemoryMap = mutable.HashMap[Long, Long]()
   // Note: off-heap unroll memory is only used in putIteratorAsBytes() because off-heap caching
   // always stores serialized values.
+  // 与上类似
   private val offHeapUnrollMemoryMap = mutable.HashMap[Long, Long]()
 
   // Initial memory to request before unrolling any block
+  // 用来展开任何Block之前，初始请求的内存大小，可以修改属性spark.storage.unrollMemoryThreshold（默认为1MB）改变大小。
   private val unrollMemoryThreshold: Long =
     conf.getLong("spark.storage.unrollMemoryThreshold", 1024 * 1024)
 
   /** Total amount of memory available for storage, in bytes. */
+    // 最大storage内存
   private def maxMemory: Long = {
     memoryManager.maxOnHeapStorageMemory + memoryManager.maxOffHeapStorageMemory
   }
 
+  // 如果最大小于unrollMemoryThreshold警告
   if (maxMemory < unrollMemoryThreshold) {
     logWarning(s"Max memory ${Utils.bytesToString(maxMemory)} is less than the initial memory " +
       s"threshold ${Utils.bytesToString(unrollMemoryThreshold)} needed to store a block in " +
@@ -146,12 +169,15 @@ private[spark] class MemoryStore(
       memoryMode: MemoryMode,
       _bytes: () => ChunkedByteBuffer): Boolean = {
     require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
+    // 通过memoryManager申请资源
     if (memoryManager.acquireStorageMemory(blockId, size, memoryMode)) {
       // We acquired enough memory for the block, so go ahead and put it
-      val bytes = _bytes()
+      val bytes: ChunkedByteBuffer = _bytes()
       assert(bytes.size == size)
+      // 创建序列化对象
       val entry = new SerializedMemoryEntry[T](bytes, memoryMode, implicitly[ClassTag[T]])
       entries.synchronized {
+        // 放入entries
         entries.put(blockId, entry)
       }
       logInfo("Block %s stored as bytes in memory (estimated size %s, free %s)".format(
@@ -196,17 +222,22 @@ private[spark] class MemoryStore(
     // Whether there is still enough memory for us to continue unrolling this block
     var keepUnrolling = true
     // Initial per-task memory to request for unrolling blocks (bytes).
+    // 初始化内存上线
     val initialMemoryThreshold = unrollMemoryThreshold
     // How often to check whether we need to request more memory
+    // 多久校验一次释放需要请求更多的内存
     val memoryCheckPeriod = conf.get(UNROLL_MEMORY_CHECK_PERIOD)
     // Memory currently reserved by this task for this particular unrolling operation
+    // 内存上线
     var memoryThreshold = initialMemoryThreshold
     // Memory to request as a multiple of current vector size
+    // 请求的内存是用于展开块的大小的倍数
     val memoryGrowthFactor = conf.get(UNROLL_MEMORY_GROWTH_FACTOR)
     // Keep track of unroll memory used by this particular block / putIterator() operation
     var unrollMemoryUsedByThisBlock = 0L
 
     // Request enough memory to begin unrolling
+    // 请求获取足够的内存
     keepUnrolling =
       reserveUnrollMemoryForThisTask(blockId, initialMemoryThreshold, memoryMode)
 
@@ -549,10 +580,11 @@ private[spark] class MemoryStore(
       memory: Long,
       memoryMode: MemoryMode): Boolean = {
     memoryManager.synchronized {
-      val success = memoryManager.acquireUnrollMemory(blockId, memory, memoryMode)
+      val success: Boolean = memoryManager.acquireUnrollMemory(blockId, memory, memoryMode)
+      // 获取展开内存
       if (success) {
-        val taskAttemptId = currentTaskAttemptId()
-        val unrollMemoryMap = memoryMode match {
+        val taskAttemptId: Long = currentTaskAttemptId()
+        val unrollMemoryMap: mutable.Map[Long, Long] = memoryMode match {
           case MemoryMode.ON_HEAP => onHeapUnrollMemoryMap
           case MemoryMode.OFF_HEAP => offHeapUnrollMemoryMap
         }
