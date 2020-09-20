@@ -64,6 +64,7 @@ private[spark] class TaskSetManager(
   val SPECULATION_QUANTILE = conf.getDouble("spark.speculation.quantile", 0.75)
   val SPECULATION_MULTIPLIER = conf.getDouble("spark.speculation.multiplier", 1.5)
 
+  // 结果总大小的字节限制。可通过spark.driver.maxResultSize属性进行配置，默认为1GB。maxResultSize是通过调用Utils工具类的getMaxResultSize方法获得的
   val maxResultSize = conf.get(config.MAX_RESULT_SIZE)
 
   val speculationEnabled = conf.getBoolean("spark.speculation", false)
@@ -76,6 +77,7 @@ private[spark] class TaskSetManager(
   private[scheduler] val partitionToIndex = tasks.zipWithIndex
     .map { case (t, idx) => t.partitionId -> idx }.toMap
   val numTasks = tasks.length
+  //对每个Task的复制运行数进行记录的数组。copiesRunning按照索引与tasks数组的同一索引位置的Task相对应，记录对应Task的复制运行数量。
   val copiesRunning = new Array[Int](numTasks)
 
   // For each task, tracks whether a copy of the task has succeeded. A task will also be
