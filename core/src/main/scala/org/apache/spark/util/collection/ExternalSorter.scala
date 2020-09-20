@@ -88,17 +88,18 @@ import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter}
  */
 private[spark] class ExternalSorter[K, V, C](
     context: TaskContext,
-    aggregator: Option[Aggregator[K, V, C]] = None,
-    partitioner: Option[Partitioner] = None,
-    ordering: Option[Ordering[K]] = None,
-    serializer: Serializer = SparkEnv.get.serializer)
+    aggregator: Option[Aggregator[K, V, C]] = None, // 聚合函数
+    partitioner: Option[Partitioner] = None, // 分区器
+    ordering: Option[Ordering[K]] = None, // 对map任务的输出数据按照key进行排序的scala.math.Ordering的实现类。
+    serializer: Serializer = SparkEnv.get.serializer) // 序列化器
   extends Spillable[WritablePartitionedPairCollection[K, C]](context.taskMemoryManager())
   with Logging {
 
   private val conf = SparkEnv.get.conf
 
-  // 拿到分区个数
+  // 分区数量
   private val numPartitions = partitioner.map(_.numPartitions).getOrElse(1)
+  // 是否应该分区
   private val shouldPartition = numPartitions > 1
   private def getPartition(key: K): Int = {
     if (shouldPartition) partitioner.get.getPartition(key) else 0
@@ -107,9 +108,11 @@ private[spark] class ExternalSorter[K, V, C](
   private val blockManager = SparkEnv.get.blockManager
   private val diskBlockManager = blockManager.diskBlockManager
   private val serializerManager = SparkEnv.get.serializerManager
+  // 序列器实例
   private val serInstance = serializer.newInstance()
 
   // Use getSizeAsKb (not bytes) to maintain backwards compatibility if no units are provided
+  // shufle文件缓存，默认32k 用于设置DiskBlockObjectWriter内部的文件缓冲大小。
   private val fileBufferSize = conf.getSizeAsKb("spark.shuffle.file.buffer", "32k").toInt * 1024
 
   // Size of object batches when reading/writing from serializers.
@@ -119,24 +122,31 @@ private[spark] class ExternalSorter[K, V, C](
   //
   // NOTE: Setting this too low can cause excessive copying when serializing, since some serializers
   // grow internal data structures by growing + copying every time the number of objects doubles.
+  // 用于将DiskBlockObjectWriter内部的文件缓冲写到磁盘的大小。可通过spark.shuffle.spill.batchSize属性进行配置，默认是10000。
   private val serializerBatchSize = conf.getLong("spark.shuffle.spill.batchSize", 10000)
 
   // Data structures to store in-memory objects before we spill. Depending on whether we have an
   // Aggregator set, we either put objects into an AppendOnlyMap where we combine them, or we
   // store them in an array buffer.
+  // 分区AppendOnlyMap 当设置了聚合器（Aggregator）时，map端将中间结果溢出到磁盘前，先利用此数据结构在内存中对中间结果进行聚合处理。
   @volatile private var map = new PartitionedAppendOnlyMap[K, C]
+  // 分区缓存Collection，当没有设置聚合器（Aggregator）时，map端将中间结果溢出到磁盘前，先利用此数据结构将中间结果存储在内存中。
   @volatile private var buffer = new PartitionedPairBuffer[K, C]
 
   // Total spilling statistics
+  // spill 到磁盘的总数量
   private var _diskBytesSpilled = 0L
   def diskBytesSpilled: Long = _diskBytesSpilled
 
   // Peak size of the in-memory data structure observed so far, in bytes
+  // 内存中数据结构大小的峰值（单位为字节）。peakMemory-UsedBytes方法专门用于返回_peakMemoryUsedBytes的值。
   private var _peakMemoryUsedBytes: Long = 0L
   def peakMemoryUsedBytes: Long = _peakMemoryUsedBytes
-
+  // 是否在shuffle时排序
   @volatile private var isShuffleSort: Boolean = true
+  // 缓存强制溢出的文件数组。forceSpillFiles的类型为ArrayBuffer[SpilledFile]。SpilledFile保存了溢出文件的信息，包括file（文件）、blockId（BlockId）、serializerBatchSizes、elementsPerPartition（每个分区的元素数量）。
   private val forceSpillFiles = new ArrayBuffer[SpilledFile]
+  // 类型为SpillableIterator，用于包装内存中数据的迭代器和溢出文件，并表现为一个新的迭代器。
   @volatile private var readingIterator: SpillableIterator = null
 
   // A comparator for keys K that orders them within a partition to allow aggregation or sorting.
@@ -169,16 +179,18 @@ private[spark] class ExternalSorter[K, V, C](
     serializerBatchSizes: Array[Long],
     elementsPerPartition: Array[Long])
 
+  // 缓存溢出的文件数组。spills的类型为ArrayBuffer[SpilledFile]。numSpills方法用于返回spills的大小，即溢出的文件数量。
   private val spills = new ArrayBuffer[SpilledFile]
 
   /**
+   * spill文件数量
    * Number of files this sorter has spilled so far.
    * Exposed for testing.
    */
   private[spark] def numSpills: Int = spills.size
 
   /**
-    * 数据放入排序器排序
+    * map任务在执行结束后会将数据写入磁盘，等待reduce任务获取。但在写入磁盘之前，Spark可能会对map任务的输出在内存中进行一些排序和聚合。
     * @param records
     */
   def insertAll(records: Iterator[Product2[K, V]]): Unit = {
@@ -187,20 +199,28 @@ private[spark] class ExternalSorter[K, V, C](
     // 是否需要预聚合
     if (shouldCombine) {
       // Combine values in-memory first using our AppendOnlyMap
-      val mergeValue = aggregator.get.mergeValue
+      // 获取聚合函数的mergeFunction
+      val mergeValue: (C, V) => C = aggregator.get.mergeValue
       // 创建预聚合函数
-      val createCombiner = aggregator.get.createCombiner
+      val createCombiner: V => C = aggregator.get.createCombiner
       var kv: Product2[K, V] = null
-      val update = (hadValue: Boolean, oldValue: C) => {
+      // 创建updateFunc
+      val update: (Boolean, C) => C = (hadValue: Boolean, oldValue: C) => {
+        // 如果存在值，使用合并函数，否则创建Combiner函数
         if (hadValue) mergeValue(oldValue, kv._2) else createCombiner(kv._2)
       }
+      // 遍历迭代器
       while (records.hasNext) {
+        // 添加读取数据记录
         addElementsRead()
+        // 获取kv
         kv = records.next()
+        // 内存使用聚合函数，相同的partition，key，的value为上一次value+这次value
         map.changeValue((getPartition(kv._1), kv._1), update)
-        // 可能需要写入磁盘
+        // 可能一些到集合
         maybeSpillCollection(usingMap = true)
       }
+      // 不需要聚合函数
     } else {
       // Stick values into our buffer
       while (records.hasNext) {
@@ -214,13 +234,15 @@ private[spark] class ExternalSorter[K, V, C](
 
   /**
    * Spill the current in-memory collection to disk if needed.
-   *
-   * @param usingMap whether we're using a map or buffer as our current in-memory collection
+   * 一些当前内存集合到磁盘如果需要
+   * @param usingMap whether we're using a map or buffer as our current in-memory collection 我们是使用map还是缓冲区作为当前的内存集合
    */
   private def maybeSpillCollection(usingMap: Boolean): Unit = {
     var estimatedSize = 0L
     if (usingMap) {
+      // 输出的Size大小
       estimatedSize = map.estimateSize()
+      // 是否需要spill
       if (maybeSpill(map, estimatedSize)) {
         map = new PartitionedAppendOnlyMap[K, C]
       }
@@ -243,6 +265,7 @@ private[spark] class ExternalSorter[K, V, C](
    * @param collection whichever collection we're using (map or buffer)
    */
   override protected[this] def spill(collection: WritablePartitionedPairCollection[K, C]): Unit = {
+    // 排序
     val inMemoryIterator = collection.destructiveSortedWritablePartitionedIterator(comparator)
     val spillFile = spillMemoryIteratorToDisk(inMemoryIterator)
     spills += spillFile
@@ -274,6 +297,7 @@ private[spark] class ExternalSorter[K, V, C](
     // Because these files may be read during shuffle, their compression must be controlled by
     // spark.shuffle.compress instead of spark.shuffle.spill.compress, so we need to use
     // createTempShuffleBlock here; see SPARK-3426 for more context.
+    // 创建tempShuffleBlock
     val (blockId, file) = diskBlockManager.createTempShuffleBlock()
 
     // These variables are reset after each flush
@@ -692,19 +716,26 @@ private[spark] class ExternalSorter[K, V, C](
       outputFile: File): Array[Long] = {
 
     // Track location of each range in the output file
+    // 分区数组
     val lengths = new Array[Long](numPartitions)
-    val writer = blockManager.getDiskWriter(blockId, outputFile, serInstance, fileBufferSize,
+    // 过去DiskBlockObjectWriter
+    val writer: DiskBlockObjectWriter = blockManager.getDiskWriter(blockId, outputFile, serInstance, fileBufferSize,
       context.taskMetrics().shuffleWriteMetrics)
 
+    // 如果一些文件为null
     if (spills.isEmpty) {
       // Case where we only have in-memory data
+      // 直接从集合中拉取文件
       val collection = if (aggregator.isDefined) map else buffer
-      val it = collection.destructiveSortedWritablePartitionedIterator(comparator)
-      while (it.hasNext) {
-        val partitionId = it.nextPartition()
+      val it: WritablePartitionedIterator = collection.destructiveSortedWritablePartitionedIterator(comparator)
+      while (it.hasNext()) {
+        // 获取分区id
+        val partitionId: Int = it.nextPartition()
+
         while (it.hasNext && it.nextPartition() == partitionId) {
           it.writeNext(writer)
         }
+        // 提交
         val segment = writer.commitAndGet()
         lengths(partitionId) = segment.length
       }

@@ -81,6 +81,7 @@ private[spark] abstract class Spillable[C](taskMemoryManager: TaskMemoryManager)
    */
   protected def maybeSpill(collection: C, currentMemory: Long): Boolean = {
     var shouldSpill = false
+    // 如果当前内存大小大于内存的上线
     if (elementsRead % 32 == 0 && currentMemory >= myMemoryThreshold) {
       // Claim up to double our current memory from the shuffle memory pool
       val amountToRequest = 2 * currentMemory - myMemoryThreshold
@@ -88,16 +89,21 @@ private[spark] abstract class Spillable[C](taskMemoryManager: TaskMemoryManager)
       myMemoryThreshold += granted
       // If we were granted too little memory to grow further (either tryToAcquire returned 0,
       // or we already had more memory than myMemoryThreshold), spill the current collection
+      // 判断是否需要spill
       shouldSpill = currentMemory >= myMemoryThreshold
     }
+    // 读取数据大于numElementsForceSpillThreshold
     shouldSpill = shouldSpill || _elementsRead > numElementsForceSpillThreshold
     // Actually spill
     if (shouldSpill) {
       _spillCount += 1
+      // 一些当前内存日志
       logSpillage(currentMemory)
+      // spill到磁盘
       spill(collection)
       _elementsRead = 0
       _memoryBytesSpilled += currentMemory
+      // 释放内存
       releaseMemory()
     }
     shouldSpill

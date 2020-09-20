@@ -78,11 +78,13 @@ final class ShuffleExternalSorter extends MemoryConsumer {
   private final ShuffleWriteMetrics writeMetrics;
 
   /**
+   * 磁盘溢出的元素数量。可通过spark.shuffle.spill.numElementsForceSpillThreshold属性进行配置，默认为1MB。
    * Force this sorter to spill when there are this many elements in memory.
    */
   private final int numElementsForSpillThreshold;
 
   /** The buffer size to use when writing spills using DiskBlockObjectWriter */
+  // ：创建的DiskBlockObjectWriter内部的文件缓冲大小。可通过spark.shuffle.file.buffer属性进行配置，默认是32KB。
   private final int fileBufferSizeBytes;
 
   /** The buffer size to use when writing the sorted records to an on-disk file */
@@ -384,9 +386,11 @@ final class ShuffleExternalSorter extends MemoryConsumer {
 
     // for tests
     assert(inMemSorter != null);
+    // 大于spill限制
     if (inMemSorter.numRecords() >= numElementsForSpillThreshold) {
       logger.info("Spilling data because number of spilledRecords crossed the threshold " +
         numElementsForSpillThreshold);
+      // spill
       spill();
     }
 
