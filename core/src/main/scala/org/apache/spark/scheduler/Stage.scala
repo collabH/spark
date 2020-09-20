@@ -43,13 +43,13 @@ import org.apache.spark.util.CallSite
  * case, the Stage object will track multiple StageInfo objects to pass to listeners or the web UI.
  * The latest one will be accessible through latestInfo.
  *
- * @param id Unique stage ID
+ * @param id Unique stage ID 唯一的stage ID
  * @param rdd RDD that this stage runs on: for a shuffle map stage, it's the RDD we run map tasks
  *   on, while for a result stage, it's the target RDD that we ran an action on
  * @param numTasks Total number of tasks in stage; result stages in particular may not need to
  *   compute all partitions, e.g. for first(), lookup(), and take().
- * @param parents List of stages that this stage depends on (through shuffle dependencies).
- * @param firstJobId ID of the first job this stage was part of, for FIFO scheduling.
+ * @param parents List of stages that this stage depends on (through shuffle dependencies). stage依赖
+ * @param firstJobId ID of the first job this stage was part of, for FIFO scheduling. 第一个job的id作为这个stage的一部分
  * @param callSite Location in the user program associated with this stage: either where the target
  *   RDD was created, for a shuffle map stage, or where the action for a result stage was called.
  */
@@ -62,18 +62,24 @@ private[scheduler] abstract class Stage(
     val callSite: CallSite)
   extends Logging {
 
+  // rdd分区数量
   val numPartitions = rdd.partitions.length
 
   /** Set of jobs that this stage belongs to. */
+  // jobId集合
   val jobIds = new HashSet[Int]
 
   /** The ID to use for the next new attempt for this stage. */
+  // 下次重试id
   private var nextAttemptId: Int = 0
 
+  // stage name
   val name: String = callSite.shortForm
+  // stage详情
   val details: String = callSite.longForm
 
   /**
+   * 返回最近一次Stage尝试的StageInfo，即返回_latestInfo。
    * Pointer to the [[StageInfo]] object for the most recent attempt. This needs to be initialized
    * here, before any attempts have actually been created, because the DAGScheduler uses this
    * StageInfo to tell SparkListeners when a job starts (which happens before any stage attempts
@@ -82,6 +88,7 @@ private[scheduler] abstract class Stage(
   private var _latestInfo: StageInfo = StageInfo.fromStage(this, nextAttemptId)
 
   /**
+   * 失败的attemptId集合
    * Set of stage attempt IDs that have failed. We keep track of these failures in order to avoid
    * endless retries if a stage keeps failing.
    * We keep track of each attempt ID that has failed to avoid recording duplicate failures if
@@ -89,16 +96,24 @@ private[scheduler] abstract class Stage(
    */
   val failedAttemptIds = new HashSet[Int]
 
+  /**
+   * 清空失败记录
+   */
   private[scheduler] def clearFailures() : Unit = {
     failedAttemptIds.clear()
   }
 
+  /**
+   * 通过使用新的attempt ID创建一个新的StageInfo，为这个阶段创建一个新的attempt
+   */
   /** Creates a new attempt for this stage by creating a new StageInfo with a new attempt ID. */
   def makeNewStageAttempt(
       numPartitionsToCompute: Int,
       taskLocalityPreferences: Seq[Seq[TaskLocation]] = Seq.empty): Unit = {
     val metrics = new TaskMetrics
+    // 注册度量
     metrics.register(rdd.sparkContext)
+    // 得到最后一次访问Stage的StageInfo信息
     _latestInfo = StageInfo.fromStage(
       this, nextAttemptId, Some(numPartitionsToCompute), metrics, taskLocalityPreferences)
     nextAttemptId += 1

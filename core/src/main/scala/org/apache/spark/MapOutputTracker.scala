@@ -27,7 +27,6 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.Duration
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
-
 import org.apache.spark.broadcast.{Broadcast, BroadcastManager}
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config._
@@ -36,6 +35,8 @@ import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.shuffle.MetadataFetchFailedException
 import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId}
 import org.apache.spark.util._
+
+import scala.collection.immutable
 
 /**
  * Helper class used by the [[MapOutputTrackerMaster]] to perform bookkeeping for a single
@@ -151,7 +152,7 @@ private class ShuffleStatus(numPartitions: Int) {
    * Returns the sequence of partition ids that are missing (i.e. needs to be computed).
    */
   def findMissingPartitions(): Seq[Int] = synchronized {
-    val missing = (0 until numPartitions).filter(id => mapStatuses(id) == null)
+    val missing: immutable.Seq[Int] = (0 until numPartitions).filter(id => mapStatuses(id) == null)
     assert(missing.size == numPartitions - _numAvailableOutputs,
       s"${missing.size} missing, expected ${numPartitions - _numAvailableOutputs}")
     missing
@@ -501,7 +502,7 @@ private[spark] class MapOutputTrackerMaster(
    * if the MapOutputTrackerMaster doesn't know about this shuffle.
    */
   def findMissingPartitions(shuffleId: Int): Option[Seq[Int]] = {
-    shuffleStatuses.get(shuffleId).map(_.findMissingPartitions())
+    shuffleStatuses.get(shuffleId).map((_: ShuffleStatus).findMissingPartitions())
   }
 
   /**

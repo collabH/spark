@@ -34,6 +34,20 @@ import org.apache.spark.util.CallSite
  * For such stages, the ActiveJobs that submitted them are tracked in `mapStageJobs`. Note that
  * there can be multiple ActiveJobs trying to compute the same shuffle map stage.
  */
+/**
+ *
+ * @param id Unique stage ID 唯一的stage ID
+ * @param rdd RDD that this stage runs on: for a shuffle map stage, it's the RDD we run map tasks
+ *   on, while for a result stage, it's the target RDD that we ran an action on
+ * @param numTasks Total number of tasks in stage; result stages in particular may not need to
+ *   compute all partitions, e.g. for first(), lookup(), and take().
+ * @param parents List of stages that this stage depends on (through shuffle dependencies). stage依赖
+ * @param firstJobId ID of the first job this stage was part of, for FIFO scheduling. 第一个job的id作为这个stage的一部分
+ * @param callSite Location in the user program associated with this stage: either where the target
+ *   RDD was created, for a shuffle map stage, or where the action for a result stage was called.
+ * @param shuffleDep shuffle依赖
+ * @param mapOutputTrackerMaster map端输出中间数据追中器Master
+ */
 private[spark] class ShuffleMapStage(
     id: Int,
     rdd: RDD[_],
@@ -45,9 +59,13 @@ private[spark] class ShuffleMapStage(
     mapOutputTrackerMaster: MapOutputTrackerMaster)
   extends Stage(id, rdd, numTasks, parents, firstJobId, callSite) {
 
+  // map阶段job集合
   private[this] var _mapStageJobs: List[ActiveJob] = Nil
 
   /**
+   * 暂停的分区集合
+   *
+   * 要么尚未计算，或者被计算在此后已失去了执行程序，它，所以应该重新计算。 此变量用于由DAGScheduler以确定何时阶段已完成。 在该阶段，无论是积极的尝试或较早尝试这一阶段可能会导致paritition IDS任务成功摆脱pendingPartitions删除。 其结果是，这个变量可以是与在TaskSetManager挂起任务的阶段主动尝试不一致（这里存储分区将始终是分区的一个子集，该TaskSetManager自以为待定）。
    * Partitions that either haven't yet been computed, or that were computed on an executor
    * that has since been lost, so should be re-computed.  This variable is used by the
    * DAGScheduler to determine when a stage has completed. Task successes in both the active
@@ -90,6 +108,7 @@ private[spark] class ShuffleMapStage(
   /** Returns the sequence of partition ids that are missing (i.e. needs to be computed). */
   override def findMissingPartitions(): Seq[Int] = {
     mapOutputTrackerMaster
+      // 查询计算完成的分区
       .findMissingPartitions(shuffleDep.shuffleId)
       .getOrElse(0 until numPartitions)
   }

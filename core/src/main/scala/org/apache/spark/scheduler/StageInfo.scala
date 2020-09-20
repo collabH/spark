@@ -32,23 +32,27 @@ class StageInfo(
     val stageId: Int,
     @deprecated("Use attemptNumber instead", "2.3.0") val attemptId: Int,
     val name: String,
-    val numTasks: Int,
-    val rddInfos: Seq[RDDInfo],
-    val parentIds: Seq[Int],
-    val details: String,
+    val numTasks: Int, //当前Stage的task数量
+    val rddInfos: Seq[RDDInfo], // rddInfo集合
+    val parentIds: Seq[Int], //父Stage集合
+    val details: String,//详细线程栈信息
     val taskMetrics: TaskMetrics = null,
     private[spark] val taskLocalityPreferences: Seq[Seq[TaskLocation]] = Seq.empty) {
   /** When this stage was submitted from the DAGScheduler to a TaskScheduler. */
+  // DAGScheduler将当前Stage提交给TaskScheduler的时间。
   var submissionTime: Option[Long] = None
   /** Time when all tasks in the stage completed or when the stage was cancelled. */
+  // 当前Stage中的所有Task完成的时间（即Stage完成的时间）或者Stage被取消的时间。
   var completionTime: Option[Long] = None
   /** If the stage failed, the reason why. */
+  // 失败的原因
   var failureReason: Option[String] = None
 
   /**
    * Terminal values of accumulables updated during this stage, including all the user-defined
    * accumulators.
    */
+    // 存储了所有聚合器计算的最终值。
   val accumulables = HashMap[Long, AccumulableInfo]()
 
   def stageFailed(reason: String) {
