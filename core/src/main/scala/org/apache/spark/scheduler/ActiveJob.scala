@@ -53,7 +53,9 @@ private[spark] class ActiveJob(
    * to compute all partitions in their target RDD, for actions like first() and lookup().
    */
   val numPartitions = finalStage match {
+      // 最终阶段为最终阶段的分区数量
     case r: ResultStage => r.partitions.length
+      // m的rdd的分区数量
     case m: ShuffleMapStage => m.rdd.partitions.length
   }
 
