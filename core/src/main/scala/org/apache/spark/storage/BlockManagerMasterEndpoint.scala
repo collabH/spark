@@ -72,6 +72,11 @@ class BlockManagerMasterEndpoint(
 
   logInfo("BlockManagerMasterEndpoint up")
 
+  /**
+   * 接收消息并且回复
+   * @param context
+   * @return
+   */
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RegisterBlockManager(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint) =>
       context.reply(register(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint))
@@ -162,6 +167,7 @@ class BlockManagerMasterEndpoint(
     // The dispatcher is used as an implicit argument into the Future sequence construction.
     val removeMsg = RemoveRdd(rddId)
 
+    // 遍历locations，向每个节点的BlockManagerSlaveEndpoint发送RemoveBlock消息。
     val futures = blockManagerInfo.values.map { bm =>
       bm.slaveEndpoint.ask[Int](removeMsg).recover {
         case e: IOException =>
