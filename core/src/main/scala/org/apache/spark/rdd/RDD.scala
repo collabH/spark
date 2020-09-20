@@ -250,8 +250,10 @@ abstract class RDD[T: ClassTag](
    * RDD is checkpointed or not.
    */
   final def dependencies: Seq[Dependency[_]] = {
-    // 窄依赖  1对1
-    checkpointRDD.map(r => List(new OneToOneDependency(r))).getOrElse {
+    //1. 先从checkpoint中查找，获取CheckpointRDD放入OneToOneDependency列表，如果chckpoint找不到
+    //2.dependencies_属性
+    //3.getDependencies方法
+    checkpointRDD.map((r: CheckpointRDD[T]) => List(new OneToOneDependency(r))).getOrElse {
       if (dependencies_ == null) {
         stateLock.synchronized {
           if (dependencies_ == null) {
@@ -268,8 +270,8 @@ abstract class RDD[T: ClassTag](
    * RDD is checkpointed or not.
    */
   final def partitions: Array[Partition] = {
-    // 拿到分区数组
-    checkpointRDD.map(_.partitions).getOrElse {
+    // 先从CheckPoint查找->partitions_->getPartitions
+    checkpointRDD.map((_: CheckpointRDD[T]).partitions).getOrElse {
       // 如果partitions_为null，double check
       if (partitions_ == null) {
         stateLock.synchronized {
@@ -298,6 +300,7 @@ abstract class RDD[T: ClassTag](
    * RDD is checkpointed.
    */
   final def preferredLocations(split: Partition): Seq[String] = {
+    // 先从checkpoint中查找偏好location，如果不存在再去getPreferredLocations()方法
     checkpointRDD.map(_.getPreferredLocations(split)).getOrElse {
       getPreferredLocations(split)
     }
@@ -311,6 +314,7 @@ abstract class RDD[T: ClassTag](
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
     // 根据存储级别
     if (storageLevel != StorageLevel.NONE) {
+      // 获取或者计算相关rdd集合
       getOrCompute(split, context)
     } else {
       computeOrReadCheckpoint(split, context)
@@ -318,26 +322,34 @@ abstract class RDD[T: ClassTag](
   }
 
   /**
+   * 返回给定RDD是仅通过狭窄的依赖关系的顺序与它的祖先。 该遍历使用DFS给定的RDD的依赖关系树，但仍保持在返回的RDDS没有顺序。
    * Return the ancestors of the given RDD that are related to it only through a sequence of
    * narrow dependencies. This traverses the given RDD's dependency tree using DFS, but maintains
    * no ordering on the RDDs returned.
    */
   private[spark] def getNarrowAncestors: Seq[RDD[_]] = {
+    // 窄依赖RDD的祖先集合
     val ancestors = new mutable.HashSet[RDD[_]]
-
+    // 偏方法
     def visit(rdd: RDD[_]): Unit = {
+      // 变量rdd的依赖，筛选出来窄依赖
       val narrowDependencies = rdd.dependencies.filter(_.isInstanceOf[NarrowDependency[_]])
+      // 获取窄依赖的父RDD
       val narrowParents = narrowDependencies.map(_.rdd)
+      // 判断祖先是否包含该RDD
       val narrowParentsNotVisited = narrowParents.filterNot(ancestors.contains)
+      // 将祖先添加到集合，并且DFS方式回溯搜索祖先的祖先
       narrowParentsNotVisited.foreach { parent =>
         ancestors.add(parent)
         visit(parent)
       }
     }
 
+    // 调用查询组件方法
     visit(this)
 
     // In case there is a cycle, do not include the root itself
+    // 移除当前RDD进入组件集合
     ancestors.filterNot(_ == this).toSeq
   }
 

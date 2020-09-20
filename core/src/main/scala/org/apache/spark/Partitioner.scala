@@ -38,12 +38,15 @@ import org.apache.spark.util.random.SamplingUtils
  * the same partition key.
  */
 abstract class Partitioner extends Serializable {
+  // 分区总数量
   def numPartitions: Int
+  // 根据key获取对应的分区
   def getPartition(key: Any): Int
 }
 
 object Partitioner {
   /**
+   * 默认分区器
    * Choose a partitioner to use for a cogroup-like operation between a number of RDDs.
    *
    * If spark.default.parallelism is set, we'll use the value of SparkContext defaultParallelism
@@ -63,16 +66,20 @@ object Partitioner {
    * We use two method parameters (rdd, others) to enforce callers passing at least 1 RDD.
    */
   def defaultPartitioner(rdd: RDD[_], others: RDD[_]*): Partitioner = {
-    val rdds = (Seq(rdd) ++ others)
-    val hasPartitioner = rdds.filter(_.partitioner.exists(_.numPartitions > 0))
+    // 将可变参数放入到一个Seq中
+    val rdds: Seq[RDD[_]] = (Seq(rdd) ++ others)
+    // 筛选出不存在分区的RDD
+    val hasPartitioner: Seq[RDD[_]] = rdds.filter(_.partitioner.exists(_.numPartitions > 0))
 
+    // 获取最大分区的RDD
     val hasMaxPartitioner: Option[RDD[_]] = if (hasPartitioner.nonEmpty) {
       Some(hasPartitioner.maxBy(_.partitions.length))
     } else {
       None
     }
 
-    val defaultNumPartitions = if (rdd.context.conf.contains("spark.default.parallelism")) {
+    // 得到默认分区数量，如果spark.default.parallelism存在则为他，否则为传入rdd中的最大分区数
+    val defaultNumPartitions: Int = if (rdd.context.conf.contains("spark.default.parallelism")) {
       rdd.context.defaultParallelism
     } else {
       rdds.map(_.partitions.length).max
@@ -80,6 +87,7 @@ object Partitioner {
 
     // If the existing max partitioner is an eligible one, or its partitions number is larger
     // than the default number of partitions, use the existing partitioner.
+    // 如果存在最大分区器，并且是合格的分区程序，或者默认分区数量小雨最大分区器的分区数，则返回最大分区的分区器，否则默认为Hash分区器，并且分区个数为"spark.default.parallelism"
     if (hasMaxPartitioner.nonEmpty && (isEligiblePartitioner(hasMaxPartitioner.get, rdds) ||
         defaultNumPartitions < hasMaxPartitioner.get.getNumPartitions)) {
       hasMaxPartitioner.get.partitioner.get
@@ -116,6 +124,7 @@ class HashPartitioner(partitions: Int) extends Partitioner {
 
   def getPartition(key: Any): Int = key match {
     case null => 0
+      // 获取key的hashcode和分区数的非负数取余为分区数
     case _ => Utils.nonNegativeMod(key.hashCode, numPartitions)
   }
 
@@ -156,6 +165,7 @@ class RangePartitioner[K : Ordering : ClassTag, V](
   require(samplePointsPerPartitionHint > 0,
     s"Sample points per partition must be greater than 0 but found $samplePointsPerPartitionHint")
 
+  // 排序顺序
   private var ordering = implicitly[Ordering[K]]
 
   // An array of upper bounds for the first (partitions - 1) partitions
