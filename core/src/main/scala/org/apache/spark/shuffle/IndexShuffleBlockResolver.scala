@@ -18,7 +18,7 @@
 package org.apache.spark.shuffle
 
 import java.io._
-import java.nio.channels.Channels
+import java.nio.channels.{Channels, SeekableByteChannel}
 import java.nio.file.Files
 
 import org.apache.spark.{SparkConf, SparkEnv}
@@ -49,27 +49,38 @@ private[spark] class IndexShuffleBlockResolver(
 
   private lazy val blockManager = Option(_blockManager).getOrElse(SparkEnv.get.blockManager)
 
+  // shuffle 网络配置
   private val transportConf = SparkTransportConf.fromSparkConf(conf, "shuffle")
 
+  /**
+   * 获取data文件
+   * @param shuffleId
+   * @param mapId
+   * @return
+   */
   def getDataFile(shuffleId: Int, mapId: Int): File = {
+    // 获取data文件
     blockManager.diskBlockManager.getFile(ShuffleDataBlockId(shuffleId, mapId, NOOP_REDUCE_ID))
   }
 
   private def getIndexFile(shuffleId: Int, mapId: Int): File = {
+    // 获取index文件
     blockManager.diskBlockManager.getFile(ShuffleIndexBlockId(shuffleId, mapId, NOOP_REDUCE_ID))
   }
 
   /**
+   * 用于删除Shuffle过程中包含指定map任务输出数据的Shuffle数据文件和索引文件。
    * Remove data file and index file that contain the output data from one map.
    */
   def removeDataByMap(shuffleId: Int, mapId: Int): Unit = {
-    var file = getDataFile(shuffleId, mapId)
+    // 获取data文件
+    var file: File = getDataFile(shuffleId, mapId)
     if (file.exists()) {
       if (!file.delete()) {
         logWarning(s"Error deleting data ${file.getPath()}")
       }
     }
-
+    // 获取index文件
     file = getIndexFile(shuffleId, mapId)
     if (file.exists()) {
       if (!file.delete()) {
@@ -79,6 +90,7 @@ private[spark] class IndexShuffleBlockResolver(
   }
 
   /**
+   * 校验index和data文件
    * Check whether the given index and data files match each other.
    * If so, return the partition lengths in the data file. Otherwise return null.
    */
@@ -139,9 +151,11 @@ private[spark] class IndexShuffleBlockResolver(
       lengths: Array[Long],
       dataTmp: File): Unit = {
     val indexFile = getIndexFile(shuffleId, mapId)
+    // 创建indexTmp
     val indexTmp = Utils.tempFileWith(indexFile)
     try {
-      val dataFile = getDataFile(shuffleId, mapId)
+      // data文件
+      val dataFile: File = getDataFile(shuffleId, mapId)
       // There is only one IndexShuffleBlockResolver per executor, this synchronization make sure
       // the following check and rename are atomic.
       synchronized {
@@ -199,7 +213,7 @@ private[spark] class IndexShuffleBlockResolver(
     // The block is actually going to be a range of a single map output file for this map, so
     // find out the consolidated file, then the offset within that from our index
     // 获取IndexFile
-    val indexFile = getIndexFile(blockId.shuffleId, blockId.mapId)
+    val indexFile: File = getIndexFile(blockId.shuffleId, blockId.mapId)
 
     // SPARK-22982: if this FileInputStream's position is seeked forward by another piece of code
     // which is incorrectly using our file descriptor then this code will fetch the wrong offsets
@@ -207,7 +221,7 @@ private[spark] class IndexShuffleBlockResolver(
     // checks added here were a useful debugging aid during SPARK-22982 and may help prevent this
     // class of issue from re-occurring in the future which is why they are left here even though
     // SPARK-22982 is fixed.
-    val channel = Files.newByteChannel(indexFile.toPath)
+    val channel: SeekableByteChannel = Files.newByteChannel(indexFile.toPath)
     channel.position(blockId.reduceId * 8L)
     val in = new DataInputStream(Channels.newInputStream(channel))
     try {
