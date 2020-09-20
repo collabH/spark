@@ -51,6 +51,7 @@ class BlockManagerMaster(
   }
 
   /**
+   * 注册这个blockmanager id到这个driver上
    * Register the BlockManager's id with the driver. The input BlockManagerId does not contain
    * topology information. This information is obtained from the master and we respond with an
    * updated BlockManagerId fleshed out with this information.
@@ -61,6 +62,7 @@ class BlockManagerMaster(
       maxOffHeapMemSize: Long,
       slaveEndpoint: RpcEndpointRef): BlockManagerId = {
     logInfo(s"Registering BlockManager $blockManagerId")
+    // 发送RegisterBlockManager到driverEndpoint
     val updatedId = driverEndpoint.askSync[BlockManagerId](
       RegisterBlockManager(blockManagerId, maxOnHeapMemSize, maxOffHeapMemSize, slaveEndpoint))
     logInfo(s"Registered BlockManager $updatedId")

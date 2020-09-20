@@ -190,9 +190,15 @@ private[spark] class IndexShuffleBlockResolver(
     }
   }
 
+  /**
+   *  获取shuffleBlock
+   * @param blockId
+   * @return
+   */
   override def getBlockData(blockId: ShuffleBlockId): ManagedBuffer = {
     // The block is actually going to be a range of a single map output file for this map, so
     // find out the consolidated file, then the offset within that from our index
+    // 获取IndexFile
     val indexFile = getIndexFile(blockId.shuffleId, blockId.mapId)
 
     // SPARK-22982: if this FileInputStream's position is seeked forward by another piece of code
@@ -215,6 +221,7 @@ private[spark] class IndexShuffleBlockResolver(
       }
       new FileSegmentManagedBuffer(
         transportConf,
+        // 获取dataFile
         getDataFile(blockId.shuffleId, blockId.mapId),
         offset,
         nextOffset - offset)

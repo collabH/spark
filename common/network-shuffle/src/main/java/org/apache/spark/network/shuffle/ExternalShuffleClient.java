@@ -55,6 +55,7 @@ public class ExternalShuffleClient extends ShuffleClient {
   protected String appId;
 
   /**
+   * 创建外部的shuffle客户端，sasl开启，如果没有开启，secretKeyHolder可能为null
    * Creates an external shuffle client, with SASL optionally enabled. If SASL is not enabled,
    * then secretKeyHolder may be null.
    */
