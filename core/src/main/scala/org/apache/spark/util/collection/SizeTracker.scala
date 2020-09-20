@@ -17,9 +17,9 @@
 
 package org.apache.spark.util.collection
 
-import scala.collection.mutable
-
 import org.apache.spark.util.SizeEstimator
+
+import scala.collection.mutable
 
 /**
  * A general interface for collections to keep track of their estimated sizes in bytes.
@@ -37,17 +37,22 @@ private[spark] trait SizeTracker {
   private val SAMPLE_GROWTH_RATE = 1.1
 
   /** Samples taken since last resetSamples(). Only the last two are kept for extrapolation. */
+  //样本队列。最后两个样本将被用于估算。
   private val samples = new mutable.Queue[Sample]
 
   /** The average number of bytes per update between our last two samples. */
+  // 平均每次更新的字节数。
   private var bytesPerUpdate: Double = _
 
   /** Total number of insertions and updates into the map since the last resetSamples(). */
+  // 更新操作（包括插入和更新）的总次数。
   private var numUpdates: Long = _
 
   /** The value of 'numUpdates' at which we will take our next sample. */
+  // 下次采样时，numUpdates的值，即numUpdates的值增长到与nextSampleNum相同时，才会再次采样。
   private var nextSampleNum: Long = _
 
+  // 初始化采样样本
   resetSamples()
 
   /**
@@ -75,6 +80,7 @@ private[spark] trait SizeTracker {
    * Take a new sample of the current collection's size.
    */
   private def takeSample(): Unit = {
+    // 估算集合的大小作为样本
     samples.enqueue(Sample(SizeEstimator.estimate(this), numUpdates))
     // Only use the last two samples to extrapolate
     if (samples.size > 2) {
@@ -101,5 +107,7 @@ private[spark] trait SizeTracker {
 }
 
 private object SizeTracker {
+
   case class Sample(size: Long, numUpdates: Long)
+
 }

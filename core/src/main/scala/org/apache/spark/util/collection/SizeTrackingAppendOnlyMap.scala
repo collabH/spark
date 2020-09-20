@@ -25,6 +25,7 @@ private[spark] class SizeTrackingAppendOnlyMap[K, V]
 {
   override def update(key: K, value: V): Unit = {
     super.update(key, value)
+    // 采样和估算自身大小
     super.afterUpdate()
   }
 
@@ -36,6 +37,7 @@ private[spark] class SizeTrackingAppendOnlyMap[K, V]
 
   override protected def growTable(): Unit = {
     super.growTable()
+    // 重新采样
     resetSamples()
   }
 }

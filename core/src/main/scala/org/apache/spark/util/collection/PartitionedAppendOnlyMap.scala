@@ -30,11 +30,14 @@ private[spark] class PartitionedAppendOnlyMap[K, V]
 
   def partitionedDestructiveSortedIterator(keyComparator: Option[Comparator[K]])
     : Iterator[((Int, K), V)] = {
+    // 获取key比较器
     val comparator = keyComparator.map(partitionKeyComparator).getOrElse(partitionComparator)
+    // 聚合比较器排序
     destructiveSortedIterator(comparator)
   }
 
   def insert(partition: Int, key: K, value: V): Unit = {
+    // 带分区的排序
     update((partition, key), value)
   }
 }
