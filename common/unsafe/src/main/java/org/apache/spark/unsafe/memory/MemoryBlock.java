@@ -45,6 +45,7 @@ public class MemoryBlock extends MemoryLocation {
    */
   public static final int FREED_IN_ALLOCATOR_PAGE_NUMBER = -3;
 
+  // 当前MemoryBlock的连续内存块的长度
   private final long length;
 
   /**
@@ -52,6 +53,7 @@ public class MemoryBlock extends MemoryLocation {
    * TaskMemoryManager. This field is public so that it can be modified by the TaskMemoryManager,
    * which lives in a different package.
    */
+  //当前MemoryBlock的页号。TaskMemoryManager分配由MemoryBlock表示的Page时，将使用此属性。
   public int pageNumber = NO_PAGE_NUMBER;
 
   public MemoryBlock(@Nullable Object obj, long offset, long length) {
@@ -60,6 +62,7 @@ public class MemoryBlock extends MemoryLocation {
   }
 
   /**
+   * MemoryBlock的大小，即length。
    * Returns the size of the memory block.
    */
   public long size() {
@@ -67,6 +70,7 @@ public class MemoryBlock extends MemoryLocation {
   }
 
   /**
+   * 创建一个指向由长整型数组使用的内存的MemoryBlock。
    * Creates a memory block pointing to the memory used by the long array.
    */
   public static MemoryBlock fromLongArray(final long[] array) {
@@ -74,6 +78,7 @@ public class MemoryBlock extends MemoryLocation {
   }
 
   /**
+   * 以指定的字节填充整个MemoryBlock，即将obj对象从offset开始，长度为length的堆内存替换为指定字节的值。Platform中封装了对sun.misc.Unsafe[插图]的API调用，Platform的setMemory方法实际调用了sun.misc.Unsafe的setMemory方法。
    * Fills the memory block with the specified byte value.
    */
   public void fill(byte value) {

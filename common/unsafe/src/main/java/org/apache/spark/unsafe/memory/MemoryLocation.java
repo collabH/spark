@@ -25,6 +25,9 @@ import javax.annotation.Nullable;
  */
 public class MemoryLocation {
 
+  /**
+   * 这里为null的主要原因是，当数据存储在offheap时，jvm堆内是不存在数据的，只存储对应的offset
+   */
   @Nullable
   Object obj;
 
