@@ -35,6 +35,16 @@ import org.apache.spark.util.Utils
  * This class does not support concurrent writes. Also, once the writer has been opened it cannot be
  * reopened again.
  */
+/**
+ *
+ * @param file 要写入的文件
+ * @param serializerManager 序列化管理器
+ * @param serializerInstance 序列化实例
+ * @param bufferSize buffer大小
+ * @param syncWrites 睡否同步写入
+ * @param writeMetrics 写入度量
+ * @param blockId blockId
+ */
 private[spark] class DiskBlockObjectWriter(
     val file: File,
     serializerManager: SerializerManager,
@@ -100,7 +110,9 @@ private[spark] class DiskBlockObjectWriter(
   private var numRecordsWritten = 0
 
   private def initialize(): Unit = {
+    // 创建文件流
     fos = new FileOutputStream(file, true)
+    // 获取fileChannel
     channel = fos.getChannel()
     ts = new TimeTrackingOutputStream(writeMetrics, fos)
     class ManualCloseBufferedOutputStream
@@ -108,16 +120,23 @@ private[spark] class DiskBlockObjectWriter(
     mcs = new ManualCloseBufferedOutputStream
   }
 
+  /**
+   * 打开要写入文件各种输出流
+   * @return
+   */
   def open(): DiskBlockObjectWriter = {
     if (hasBeenClosed) {
       throw new IllegalStateException("Writer already closed. Cannot be reopened.")
     }
     if (!initialized) {
+      // 初始化流
       initialize()
       initialized = true
     }
 
+    // 保证流
     bs = serializerManager.wrapStream(blockId, mcs)
+    // 序列化对象
     objOut = serializerInstance.serializeStream(bs)
     streamOpen = true
     this
