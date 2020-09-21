@@ -51,7 +51,7 @@ import org.apache.spark.util.io.ChunkedByteBufferOutputStream
  *                        For each block we also require the size (in bytes as a long field) in
  *                        order to throttle the memory usage. Note that zero-sized blocks are
  *                        already excluded, which happened in
- *                        [[MapOutputTracker.convertMapStatuses]].
+ *                        [[org.apache.spark.MapOutputTracker.convertMapStatuses]].
  * @param streamWrapper A function to wrap the returned input stream.
  * @param maxBytesInFlight max size (in bytes) of remote blocks to fetch at any given point.
  * @param maxReqsInFlight max number of remote requests to fetch blocks at any given point.
@@ -67,16 +67,17 @@ final class ShuffleBlockFetcherIterator(
     blockManager: BlockManager,
     blocksByAddress: Iterator[(BlockManagerId, Seq[(BlockId, Long)])],
     streamWrapper: (BlockId, InputStream) => InputStream,
-    maxBytesInFlight: Long,
-    maxReqsInFlight: Int,
-    maxBlocksInFlightPerAddress: Int,
-    maxReqSizeShuffleToMem: Long,
-    detectCorrupt: Boolean)
+    maxBytesInFlight: Long, // 在任何给定点要获取的远程块的最大大小(以字节为单位)。
+    maxReqsInFlight: Int, // 在任何给定点获取块的最大远程请求数。
+    maxBlocksInFlightPerAddress: Int,//在任何给定点获取最大的shuffle blocks的个数
+    maxReqSizeShuffleToMem: Long, // 一次请求能够被shuffle存到内存的的最大字节数
+    detectCorrupt: Boolean) //是否检测所取块中的任何损坏。
   extends Iterator[(BlockId, InputStream)] with DownloadFileManager with Logging {
 
   import ShuffleBlockFetcherIterator._
 
   /**
+   * 拉取block的总数
    * Total number of blocks to fetch. This should be equal to the total number of blocks
    * in [[blocksByAddress]] because we already filter out zero-sized blocks in [[blocksByAddress]].
    *
@@ -85,6 +86,7 @@ final class ShuffleBlockFetcherIterator(
   private[this] var numBlocksToFetch = 0
 
   /**
+   *  被处理完成的block数量
    * The number of blocks processed by the caller. The iterator is exhausted when
    * [[numBlocksProcessed]] == [[numBlocksToFetch]].
    */
@@ -349,8 +351,12 @@ final class ShuffleBlockFetcherIterator(
     }
   }
 
+  /**
+   * 初始化
+   */
   private[this] def initialize(): Unit = {
     // Add a task completion callback (called in both success case and failure case) to cleanup.
+    // 添加task完成监听器，当完成是触发TaskContext cleanUp
     context.addTaskCompletionListener[Unit](_ => cleanup())
 
     // Split local and remote blocks.
@@ -367,7 +373,7 @@ final class ShuffleBlockFetcherIterator(
     val numFetches = remoteRequests.size - fetchRequests.size
     logInfo("Started " + numFetches + " remote fetches in" + Utils.getUsedTimeMs(startTime))
 
-    // Get Local Blocks
+    // Get Local Blocks 获取本地的block
     fetchLocalBlocks()
     logDebug("Got local blocks in " + Utils.getUsedTimeMs(startTime))
   }
@@ -607,6 +613,7 @@ object ShuffleBlockFetcherIterator {
   }
 
   /**
+   * 拉取来自远程的block的结果
    * Result of a fetch from a remote block.
    */
   private[storage] sealed trait FetchResult {

@@ -25,13 +25,14 @@ import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
 
 /**
+ * 从一个shuffle by中获取并读取范围内的分区[startPartition, endPartition]从其他节点的块存储中请求它们。
  * Fetches and reads the partitions in range [startPartition, endPartition) from a shuffle by
  * requesting them from other nodes' block stores.
  */
 private[spark] class BlockStoreShuffleReader[K, C](
-    handle: BaseShuffleHandle[K, _, C],
-    startPartition: Int,
-    endPartition: Int,
+    handle: BaseShuffleHandle[K, _, C], // 传输shuffle携带的信息
+    startPartition: Int, // 开始分区
+    endPartition: Int, // 结束分区
     context: TaskContext,
     serializerManager: SerializerManager = SparkEnv.get.serializerManager,
     blockManager: BlockManager = SparkEnv.get.blockManager,
@@ -42,6 +43,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
 
   /** Read the combined key-values for this reduce task */
   override def read(): Iterator[Product2[K, C]] = {
+    // 创建ShuffleBlockFetcherIterator
     val wrappedStreams = new ShuffleBlockFetcherIterator(
       context,
       blockManager.shuffleClient,

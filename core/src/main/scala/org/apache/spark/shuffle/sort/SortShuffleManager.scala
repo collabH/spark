@@ -75,7 +75,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
   }
 
   /**
-   * shuffleid和mapid映射
+   * shuffleid和map任务数映射
    * A mapping from shuffle ids to the number of mappers producing output for those shuffles.
    */
   private[this] val numMapsForShuffle = new ConcurrentHashMap[Int, Int]()
@@ -129,7 +129,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       handle: ShuffleHandle,
       mapId: Int,
       context: TaskContext): ShuffleWriter[K, V] = {
-    // 将ShuffleHandle放入numMapsForShuffle中
+    // 将指定的shuffleId和shuffle对应的map任务数注册到numMapsForShuffle中
     numMapsForShuffle.putIfAbsent(
       handle.shuffleId, handle.asInstanceOf[BaseShuffleHandle[_, _, _]].numMaps)
     val env = SparkEnv.get
@@ -160,6 +160,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
 
   /** Remove a shuffle's metadata from the ShuffleManager. */
   override def unregisterShuffle(shuffleId: Int): Boolean = {
+    // 移除map和shuffle的内存映射，移除shuffle的dataFile、indexFile
     Option(numMapsForShuffle.remove(shuffleId)).foreach { numMaps =>
       (0 until numMaps).foreach { mapId =>
         shuffleBlockResolver.removeDataByMap(shuffleId, mapId)
