@@ -35,9 +35,11 @@ import org.apache.spark.util.Utils
  */
 private[spark] sealed trait MapStatus {
   /** Location where this task was run. */
+  //task运行的location
   def location: BlockManagerId
 
   /**
+   * 获取block的大小
    * Estimated size for the reduce block, in bytes.
    *
    * If a block is non-empty, then this method MUST return a non-zero size.  This invariant is
@@ -50,6 +52,7 @@ private[spark] sealed trait MapStatus {
 private[spark] object MapStatus {
 
   /**
+   * 最小的分区数量使用HighlyCompressedMapStatus
    * Min partition number to use [[HighlyCompressedMapStatus]]. A bit ugly here because in test
    * code we can't assume SparkEnv.get exists.
    */
@@ -59,8 +62,10 @@ private[spark] object MapStatus {
 
   def apply(loc: BlockManagerId, uncompressedSizes: Array[Long]): MapStatus = {
     if (uncompressedSizes.length > minPartitionsToUseHighlyCompressMapStatus) {
+      // 高度压缩，数据量大于默认2000时
       HighlyCompressedMapStatus(loc, uncompressedSizes)
     } else {
+      // 压缩map状态
       new CompressedMapStatus(loc, uncompressedSizes)
     }
   }

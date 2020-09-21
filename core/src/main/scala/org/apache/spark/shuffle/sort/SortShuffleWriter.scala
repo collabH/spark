@@ -17,6 +17,8 @@
 
 package org.apache.spark.shuffle.sort
 
+import java.io.File
+
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.scheduler.MapStatus
@@ -26,16 +28,17 @@ import org.apache.spark.util.Utils
 import org.apache.spark.util.collection.ExternalSorter
 
 private[spark] class SortShuffleWriter[K, V, C](
-    shuffleBlockResolver: IndexShuffleBlockResolver,
-    handle: BaseShuffleHandle[K, V, C],
-    mapId: Int,
+    shuffleBlockResolver: IndexShuffleBlockResolver, // 操作shuffle底层存储文件的解析器
+    handle: BaseShuffleHandle[K, V, C], // shuffleHandle 传输shuffle的相关信息
+    mapId: Int, // mapId
     context: TaskContext)
   extends ShuffleWriter[K, V] with Logging {
 
+  // handle（即BaseShuffleHandle）的dependency属性（类型为ShuffleDependency）。
   private val dep = handle.dependency
 
   private val blockManager = SparkEnv.get.blockManager
-
+  // 外部排序器
   private var sorter: ExternalSorter[K, V, _] = null
 
   // Are we in the process of stopping? Because map tasks can call stop() with success = true
@@ -48,8 +51,12 @@ private[spark] class SortShuffleWriter[K, V, C](
   private val writeMetrics = context.taskMetrics().shuffleWriteMetrics
 
   /** Write a bunch of records to this task's output */
+  /**
+   * 在此任务的输出中写一堆记录
+   * @param records
+   */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
-    // 如果存在map端预聚合
+    // 如果存在map端预聚合，将聚合函数传入ExternalSorter中，这里会使用PartitionedAppendOnlyMap
     sorter = if (dep.mapSideCombine) {
       new ExternalSorter[K, V, C](
         context, dep.aggregator, Some(dep.partitioner), dep.keyOrdering, dep.serializer)
@@ -57,20 +64,23 @@ private[spark] class SortShuffleWriter[K, V, C](
       // In this case we pass neither an aggregator nor an ordering to the sorter, because we don't
       // care whether the keys get sorted in each partition; that will be done on the reduce side
       // if the operation being run is sortByKey.
+      // 这里使用Collection PartitionedPairBuffer
       new ExternalSorter[K, V, V](
         context, aggregator = None, Some(dep.partitioner), ordering = None, dep.serializer)
     }
-    // 进行排序
+    // 将记录插入到外部排序器中，会在内存聚合、合并，如果达到阈值会spill到磁盘
     sorter.insertAll(records)
 
     // Don't bother including the time to open the merged output file in the shuffle write time,
     // because it just opens a single file, so is typically too fast to measure accurately
     // (see SPARK-3570).
-    val output = shuffleBlockResolver.getDataFile(dep.shuffleId, mapId)
+    // 获取shuffle的dataFile
+    val output: File = shuffleBlockResolver.getDataFile(dep.shuffleId, mapId)
     val tmp = Utils.tempFileWith(output)
+    // 将map端缓存的数据写到磁盘，并生成对应的index文件
     try {
       val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)
-      val partitionLengths = sorter.writePartitionedFile(blockId, tmp)
+      val partitionLengths: Array[Long] = sorter.writePartitionedFile(blockId, tmp)
       // 写索引文件并且提交
       shuffleBlockResolver.writeIndexFileAndCommit(dep.shuffleId, mapId, partitionLengths, tmp)
       mapStatus = MapStatus(blockManager.shuffleServerId, partitionLengths)
@@ -89,9 +99,9 @@ private[spark] class SortShuffleWriter[K, V, C](
       }
       stopping = true
       if (success) {
-        return Option(mapStatus)
+        Option(mapStatus)
       } else {
-        return None
+        None
       }
     } finally {
       // Clean up our sorter, which may have its own intermediate files

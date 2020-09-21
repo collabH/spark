@@ -26,6 +26,7 @@ import org.apache.spark.scheduler.MapStatus
  */
 private[spark] abstract class ShuffleWriter[K, V] {
   /** Write a sequence of records to this task's output */
+  // 写一个记录的seq到这个task的输出
   @throws[IOException]
   def write(records: Iterator[Product2[K, V]]): Unit
 

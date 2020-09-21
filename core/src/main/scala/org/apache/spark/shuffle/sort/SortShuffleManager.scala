@@ -75,10 +75,12 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
   }
 
   /**
+   * shuffleid和mapid映射
    * A mapping from shuffle ids to the number of mappers producing output for those shuffles.
    */
   private[this] val numMapsForShuffle = new ConcurrentHashMap[Int, Int]()
 
+  // IndexShuffleBlockResolver，用于获取shuffle的indexFile、DataFile
   override val shuffleBlockResolver = new IndexShuffleBlockResolver(conf)
 
   /**
