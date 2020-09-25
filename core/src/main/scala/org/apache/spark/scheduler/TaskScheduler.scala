@@ -92,6 +92,7 @@ private[spark] trait TaskScheduler {
 
   /**
    * Process a lost executor
+   *  指定丢失的executor
    */
   def executorLost(executorId: String, reason: ExecutorLossReason): Unit
 
