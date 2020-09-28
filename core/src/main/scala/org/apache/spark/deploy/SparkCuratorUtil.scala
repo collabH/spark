@@ -18,11 +18,9 @@
 package org.apache.spark.deploy
 
 import scala.collection.JavaConverters._
-
 import org.apache.curator.framework.{CuratorFramework, CuratorFrameworkFactory}
 import org.apache.curator.retry.ExponentialBackoffRetry
-import org.apache.zookeeper.KeeperException
-
+import org.apache.zookeeper.{CreateMode, KeeperException}
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
 

@@ -53,6 +53,10 @@ abstract class PersistenceEngine {
    */
   def read[T: ClassTag](prefix: String): Seq[T]
 
+  /**
+   *  在完成新的Application的注册之前，必须被调用
+   * @param app
+   */
   final def addApplication(app: ApplicationInfo): Unit = {
     persist("app_" + app.id, app)
   }
@@ -61,6 +65,10 @@ abstract class PersistenceEngine {
     unpersist("app_" + app.id)
   }
 
+  /**
+   *在完成新的Worker的注册之前，addWorker方法必须被调用。
+   * @param worker
+   */
   final def addWorker(worker: WorkerInfo): Unit = {
     persist("worker_" + worker.id, worker)
   }
