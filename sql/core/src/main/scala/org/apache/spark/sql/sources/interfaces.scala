@@ -39,6 +39,7 @@ import org.apache.spark.sql.types.StructType
 trait DataSourceRegister {
 
   /**
+   * 获取数据源提供者使用的格式或格式的别名
    * The string that represents the format that this data source provider uses. This is
    * overridden by children to provide a nice alias for the data source. For example:
    *

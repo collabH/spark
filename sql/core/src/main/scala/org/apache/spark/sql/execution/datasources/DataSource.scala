@@ -81,11 +81,11 @@ import org.apache.spark.util.Utils
  */
 case class DataSource(
     sparkSession: SparkSession,
-    className: String,
-    paths: Seq[String] = Nil,
-    userSpecifiedSchema: Option[StructType] = None,
-    partitionColumns: Seq[String] = Seq.empty,
-    bucketSpec: Option[BucketSpec] = None,
+    className: String, // 此名称用于决定要使用的类
+    paths: Seq[String] = Nil, // 数据源的多个路径
+    userSpecifiedSchema: Option[StructType] = None, // 用户指定的StructType
+    partitionColumns: Seq[String] = Seq.empty, // 分区列
+    bucketSpec: Option[BucketSpec] = None, //分桶描述
     options: Map[String, String] = Map.empty,
     catalogTable: Option[CatalogTable] = None) extends Logging {
 
@@ -580,6 +580,9 @@ object DataSource extends Logging {
     val socket = classOf[TextSocketSourceProvider].getCanonicalName
     val rate = classOf[RateStreamProvider].getCanonicalName
 
+    /**
+     * 内省映射
+     */
     Map(
       "org.apache.spark.sql.jdbc" -> jdbc,
       "org.apache.spark.sql.jdbc.DefaultSource" -> jdbc,
