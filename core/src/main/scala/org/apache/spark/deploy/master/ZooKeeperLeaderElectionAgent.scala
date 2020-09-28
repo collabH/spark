@@ -27,19 +27,28 @@ import org.apache.spark.internal.Logging
 private[master] class ZooKeeperLeaderElectionAgent(val masterInstance: LeaderElectable,
     conf: SparkConf) extends LeaderLatchListener with LeaderElectionAgent with Logging  {
 
+  // zookeeper存spark选举的目录
   val WORKING_DIR = conf.get("spark.deploy.zookeeper.dir", "/spark") + "/leader_election"
 
   private var zk: CuratorFramework = _
+  //  leader锁存器
   private var leaderLatch: LeaderLatch = _
+  // leader撤销状态
   private var status = LeadershipStatus.NOT_LEADER
 
+  /**
+   * 开始选举
+   */
   start()
 
   private def start() {
     logInfo("Starting ZooKeeper LeaderElection agent")
     zk = SparkCuratorUtil.newClient(conf)
+    // 创建leader所
     leaderLatch = new LeaderLatch(zk, WORKING_DIR)
+    // 添加监听器
     leaderLatch.addListener(this)
+    // 开启
     leaderLatch.start()
   }
 
@@ -48,6 +57,9 @@ private[master] class ZooKeeperLeaderElectionAgent(val masterInstance: LeaderEle
     zk.close()
   }
 
+  /**
+   * 是否是leader
+   */
   override def isLeader() {
     synchronized {
       // could have lost leadership by now.
@@ -60,6 +72,9 @@ private[master] class ZooKeeperLeaderElectionAgent(val masterInstance: LeaderEle
     }
   }
 
+  /**
+   * 不是leader
+   */
   override def notLeader() {
     synchronized {
       // could have gained leadership by now.
@@ -72,9 +87,14 @@ private[master] class ZooKeeperLeaderElectionAgent(val masterInstance: LeaderEle
     }
   }
 
+  /**
+   * 修改leader撤回状态
+   * @param isLeader
+   */
   private def updateLeadershipStatus(isLeader: Boolean) {
     if (isLeader && status == LeadershipStatus.NOT_LEADER) {
       status = LeadershipStatus.LEADER
+      // 选举出leader
       masterInstance.electedLeader()
     } else if (!isLeader && status == LeadershipStatus.LEADER) {
       status = LeadershipStatus.NOT_LEADER
